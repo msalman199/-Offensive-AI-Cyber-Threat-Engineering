@@ -1,0 +1,514 @@
+Develop Adaptive Scanning Workflows with AI Agents
+Learning Objectives
+By completing this lab, you will:
+
+Integrate AI agents to create adaptive automated scanning workflows
+Develop intelligent scanning systems that adapt based on discovered vulnerabilities
+Implement workflow automation using open-source AI frameworks
+Test and validate adaptive scanning behaviors
+Prerequisites
+Basic Linux command-line knowledge
+Understanding of network scanning concepts
+Familiarity with Python programming
+Knowledge of vulnerability scanning principles
+Lab Environment
+Al Nafi provides Linux-based cloud machines for this lab. Click Start Lab to access your dedicated Linux machine. The provided machine is bare metal with no pre-installed tools, so you will install all required components during the lab.
+
+Task 1: Set up AI agents for workflow automation
+Subtask 1.1: Install Required Dependencies
+Update the system and install Python dependencies:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip python3-venv git nmap masscan
+Create a project directory and virtual environment:
+
+mkdir ~/adaptive-scanning-lab
+cd ~/adaptive-scanning-lab
+python3 -m venv venv
+source venv/bin/activate
+Subtask 1.2: Install AI and Automation Libraries
+Install required Python packages:
+
+pip install scikit-learn numpy pandas requests python-nmap asyncio aiohttp
+pip install openai-gym stable-baselines3 torch torchvision
+Subtask 1.3: Create AI Agent Framework
+Create the main AI agent structure:
+
+mkdir -p agents workflows logs
+Create the base AI agent class:
+
+# agents/base_agent.py
+import json
+import time
+import subprocess
+from abc import ABC, abstractmethod
+
+class BaseAgent(ABC):
+    def __init__(self, name, config=None):
+        self.name = name
+        self.config = config or {}
+        self.state = {}
+        self.learning_data = []
+    
+    @abstractmethod
+    def analyze(self, data):
+        pass
+    
+    @abstractmethod
+    def decide(self, analysis_result):
+        pass
+    
+    def log_action(self, action, result):
+        log_entry = {
+            'timestamp': time.time(),
+            'agent': self.name,
+            'action': action,
+            'result': result
+        }
+        self.learning_data.append(log_entry)
+        
+    def save_state(self, filepath):
+        with open(filepath, 'w') as f:
+            json.dump({
+                'state': self.state,
+                'learning_data': self.learning_data
+            }, f, indent=2)
+Task 2: Develop scanning workflows using AI
+Subtask 2.1: Create Adaptive Scanning Agent
+Create an intelligent scanning agent:
+
+# agents/scanning_agent.py
+import nmap
+import json
+import random
+from base_agent import BaseAgent
+
+class AdaptiveScanningAgent(BaseAgent):
+    def __init__(self, name="ScanAgent"):
+        super().__init__(name)
+        self.nm = nmap.PortScanner()
+        self.scan_techniques = [
+            '-sS',  # SYN scan
+            '-sT',  # TCP connect scan
+            '-sU',  # UDP scan
+            '-sA',  # ACK scan
+        ]
+        self.port_ranges = ['1-1000', '1-65535', '80,443,22,21,25']
+        
+    def analyze(self, target_data):
+        """Analyze previous scan results to determine next action"""
+        if not target_data.get('previous_scans'):
+            return {'recommendation': 'initial_scan', 'confidence': 1.0}
+        
+        # Simple AI logic - analyze open ports and services
+        open_ports = target_data.get('open_ports', [])
+        services = target_data.get('services', [])
+        
+        # Determine scan intensity based on findings
+        if len(open_ports) > 10:
+            return {'recommendation': 'deep_scan', 'confidence': 0.8}
+        elif any('http' in service for service in services):
+            return {'recommendation': 'web_scan', 'confidence': 0.9}
+        else:
+            return {'recommendation': 'standard_scan', 'confidence': 0.6}
+    
+    def decide(self, analysis_result):
+        """Make scanning decisions based on analysis"""
+        recommendation = analysis_result['recommendation']
+        
+        if recommendation == 'initial_scan':
+            return {
+                'technique': '-sS',
+                'ports': '1-1000',
+                'timing': '-T3'
+            }
+        elif recommendation == 'deep_scan':
+            return {
+                'technique': '-sS -sV',
+                'ports': '1-65535',
+                'timing': '-T2'
+            }
+        elif recommendation == 'web_scan':
+            return {
+                'technique': '-sS -sV --script=http-*',
+                'ports': '80,443,8080,8443',
+                'timing': '-T4'
+            }
+        else:
+            return {
+                'technique': '-sS',
+                'ports': '1-1000',
+                'timing': '-T3'
+            }
+    
+    def execute_scan(self, target, scan_params):
+        """Execute the actual scan"""
+        try:
+            command = f"nmap {scan_params['technique']} {scan_params['timing']} -p {scan_params['ports']} {target}"
+            self.nm.scan(target, scan_params['ports'], scan_params['technique'])
+            
+            results = {
+                'target': target,
+                'scan_params': scan_params,
+                'results': dict(self.nm[target]) if target in self.nm.all_hosts() else {},
+                'timestamp': time.time()
+            }
+            
+            self.log_action('scan_executed', results)
+            return results
+            
+        except Exception as e:
+            error_result = {'error': str(e), 'target': target}
+            self.log_action('scan_failed', error_result)
+            return error_result
+Subtask 2.2: Create Workflow Orchestrator
+Create the main workflow orchestrator:
+
+# workflows/orchestrator.py
+import asyncio
+import json
+import time
+from agents.scanning_agent import AdaptiveScanningAgent
+
+class WorkflowOrchestrator:
+    def __init__(self):
+        self.agents = {}
+        self.workflows = {}
+        self.results = []
+        
+    def register_agent(self, agent_name, agent):
+        self.agents[agent_name] = agent
+        
+    def create_adaptive_workflow(self, workflow_name, targets):
+        """Create an adaptive scanning workflow"""
+        workflow = {
+            'name': workflow_name,
+            'targets': targets,
+            'status': 'created',
+            'steps': [],
+            'results': {}
+        }
+        self.workflows[workflow_name] = workflow
+        return workflow
+    
+    async def execute_workflow(self, workflow_name):
+        """Execute adaptive workflow with AI decision making"""
+        workflow = self.workflows[workflow_name]
+        workflow['status'] = 'running'
+        
+        scan_agent = self.agents.get('scanner')
+        if not scan_agent:
+            return {'error': 'No scanning agent registered'}
+        
+        for target in workflow['targets']:
+            print(f"Processing target: {target}")
+            
+            # Initialize target data
+            target_data = {
+                'target': target,
+                'previous_scans': [],
+                'open_ports': [],
+                'services': []
+            }
+            
+            # Adaptive scanning loop
+            for iteration in range(3):  # Max 3 adaptive iterations
+                print(f"  Iteration {iteration + 1}")
+                
+                # AI analysis
+                analysis = scan_agent.analyze(target_data)
+                print(f"    Analysis: {analysis}")
+                
+                # AI decision
+                decision = scan_agent.decide(analysis)
+                print(f"    Decision: {decision}")
+                
+                # Execute scan
+                scan_result = scan_agent.execute_scan(target, decision)
+                
+                # Update target data for next iteration
+                if 'results' in scan_result and scan_result['results']:
+                    host_data = scan_result['results']
+                    if 'tcp' in host_data:
+                        target_data['open_ports'].extend(
+                            [port for port, data in host_data['tcp'].items() 
+                             if data['state'] == 'open']
+                        )
+                    target_data['previous_scans'].append(scan_result)
+                
+                # Store results
+                workflow['results'][f"{target}_iteration_{iteration}"] = scan_result
+                
+                # Adaptive delay
+                await asyncio.sleep(2)
+            
+        workflow['status'] = 'completed'
+        return workflow
+Subtask 2.3: Create Test Targets Setup
+Create a script to set up test targets:
+
+# setup_test_environment.py
+import subprocess
+import time
+
+def setup_test_targets():
+    """Set up local test services for scanning"""
+    print("Setting up test environment...")
+    
+    # Start a simple HTTP server
+    try:
+        subprocess.Popen(['python3', '-m', 'http.server', '8080'], 
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print("Started HTTP server on port 8080")
+    except:
+        print("Could not start HTTP server")
+    
+    # Start SSH service if available
+    try:
+        subprocess.run(['sudo', 'systemctl', 'start', 'ssh'], 
+                      capture_output=True)
+        print("SSH service started")
+    except:
+        print("SSH service not available")
+    
+    time.sleep(2)
+    return ['127.0.0.1']
+
+if __name__ == "__main__":
+    targets = setup_test_targets()
+    print(f"Test targets ready: {targets}")
+Task 3: Test the adaptive scanning system
+Subtask 3.1: Create Main Test Script
+Create the main testing script:
+
+# test_adaptive_scanning.py
+import asyncio
+import json
+from workflows.orchestrator import WorkflowOrchestrator
+from agents.scanning_agent import AdaptiveScanningAgent
+from setup_test_environment import setup_test_targets
+
+async def main():
+    print("=== Adaptive Scanning Workflow Test ===")
+    
+    # Setup test environment
+    targets = setup_test_targets()
+    
+    # Initialize orchestrator and agents
+    orchestrator = WorkflowOrchestrator()
+    scan_agent = AdaptiveScanningAgent()
+    
+    # Register agents
+    orchestrator.register_agent('scanner', scan_agent)
+    
+    # Create adaptive workflow
+    workflow = orchestrator.create_adaptive_workflow('test_workflow', targets)
+    print(f"Created workflow: {workflow['name']}")
+    
+    # Execute workflow
+    print("\nExecuting adaptive scanning workflow...")
+    result = await orchestrator.execute_workflow('test_workflow')
+    
+    # Display results
+    print("\n=== Workflow Results ===")
+    print(f"Status: {result['status']}")
+    
+    for key, scan_result in result['results'].items():
+        print(f"\n{key}:")
+        if 'error' in scan_result:
+            print(f"  Error: {scan_result['error']}")
+        else:
+            print(f"  Target: {scan_result['target']}")
+            print(f"  Scan params: {scan_result['scan_params']}")
+            if scan_result['results']:
+                print(f"  Results available: Yes")
+            else:
+                print(f"  Results available: No")
+    
+    # Save results
+    with open('logs/workflow_results.json', 'w') as f:
+        json.dump(result, f, indent=2)
+    
+    # Save agent learning data
+    scan_agent.save_state('logs/agent_state.json')
+    
+    print(f"\nResults saved to logs/")
+    print(f"Agent logged {len(scan_agent.learning_data)} actions")
+
+if __name__ == "__main__":
+    asyncio.run(main())
+Subtask 3.2: Run the Adaptive Scanning Test
+Execute the complete test:
+
+# Make sure you're in the project directory and virtual environment is active
+cd ~/adaptive-scanning-lab
+source venv/bin/activate
+
+# Create the required files
+cat > agents/__init__.py << EOF
+# Empty init file
+EOF
+
+cat > workflows/__init__.py << EOF
+# Empty init file
+EOF
+
+# Run the test
+python3 test_adaptive_scanning.py
+Subtask 3.3: Analyze Results and Validate Adaptation
+Create a results analysis script:
+
+# analyze_results.py
+import json
+
+def analyze_workflow_results():
+    """Analyze the adaptive behavior of the scanning workflow"""
+    
+    try:
+        with open('logs/workflow_results.json', 'r') as f:
+            results = json.load(f)
+        
+        with open('logs/agent_state.json', 'r') as f:
+            agent_state = json.load(f)
+    except FileNotFoundError:
+        print("Results files not found. Run the test first.")
+        return
+    
+    print("=== Adaptive Scanning Analysis ===")
+    print(f"Workflow Status: {results['status']}")
+    print(f"Total Targets: {len(results.get('targets', []))}")
+    print(f"Total Scan Iterations: {len(results['results'])}")
+    
+    print("\n=== Agent Learning Analysis ===")
+    learning_data = agent_state['learning_data']
+    print(f"Total Actions Logged: {len(learning_data)}")
+    
+    # Analyze scan progression
+    scan_actions = [action for action in learning_data if action['action'] == 'scan_executed']
+    
+    if scan_actions:
+        print("\n=== Scan Progression ===")
+        for i, action in enumerate(scan_actions):
+            result = action['result']
+            print(f"Scan {i+1}:")
+            print(f"  Technique: {result['scan_params']['technique']}")
+            print(f"  Ports: {result['scan_params']['ports']}")
+            print(f"  Timing: {result['scan_params']['timing']}")
+    
+    # Check for adaptive behavior
+    techniques_used = set()
+    for action in scan_actions:
+        techniques_used.add(action['result']['scan_params']['technique'])
+    
+    print(f"\n=== Adaptation Evidence ===")
+    print(f"Different techniques used: {len(techniques_used)}")
+    print(f"Techniques: {list(techniques_used)}")
+    
+    if len(techniques_used) > 1:
+        print("✓ Adaptive behavior detected - multiple techniques used")
+    else:
+        print("⚠ Limited adaptation - consider enhancing AI logic")
+
+if __name__ == "__main__":
+    analyze_workflow_results()
+Run the analysis:
+
+python3 analyze_results.py
+Subtask 3.4: Test Advanced Adaptive Features
+Create an enhanced test with more complex scenarios:
+
+# advanced_test.py
+import asyncio
+import json
+from workflows.orchestrator import WorkflowOrchestrator
+from agents.scanning_agent import AdaptiveScanningAgent
+
+class EnhancedScanningAgent(AdaptiveScanningAgent):
+    def __init__(self, name="EnhancedScanAgent"):
+        super().__init__(name)
+        self.threat_score = 0
+        self.scan_history = {}
+    
+    def analyze(self, target_data):
+        """Enhanced analysis with threat scoring"""
+        target = target_data['target']
+        
+        # Initialize history for new targets
+        if target not in self.scan_history:
+            self.scan_history[target] = {'scans': 0, 'findings': 0}
+        
+        history = self.scan_history[target]
+        open_ports = target_data.get('open_ports', [])
+        
+        # Calculate threat score
+        threat_score = len(open_ports) * 10
+        if any(port in [21, 23, 135, 139, 445] for port in open_ports):
+            threat_score += 50  # High-risk ports
+        
+        self.threat_score = threat_score
+        history['scans'] += 1
+        
+        # Adaptive recommendations based on threat score and history
+        if threat_score > 100:
+            return {'recommendation': 'aggressive_scan', 'confidence': 0.9, 'threat_score': threat_score}
+        elif threat_score > 50:
+            return {'recommendation': 'thorough_scan', 'confidence': 0.8, 'threat_score': threat_score}
+        elif history['scans'] == 1:
+            return {'recommendation': 'initial_scan', 'confidence': 0.7, 'threat_score': threat_score}
+        else:
+            return {'recommendation': 'maintenance_scan', 'confidence': 0.6, 'threat_score': threat_score}
+
+async def test_enhanced_adaptation():
+    print("=== Enhanced Adaptive Scanning Test ===")
+    
+    # Create multiple test scenarios
+    targets = ['127.0.0.1', '127.0.0.1']  # Same target, different iterations
+    
+    orchestrator = WorkflowOrchestrator()
+    enhanced_agent = EnhancedScanningAgent()
+    orchestrator.register_agent('scanner', enhanced_agent)
+    
+    # Create and execute workflow
+    workflow = orchestrator.create_adaptive_workflow('enhanced_test', targets)
+    result = await orchestrator.execute_workflow('enhanced_test')
+    
+    print(f"\nFinal threat score: {enhanced_agent.threat_score}")
+    print(f"Scan history: {enhanced_agent.scan_history}")
+    
+    # Save enhanced results
+    with open('logs/enhanced_results.json', 'w') as f:
+        json.dump({
+            'workflow_result': result,
+            'threat_score': enhanced_agent.threat_score,
+            'scan_history': enhanced_agent.scan_history
+        }, f, indent=2)
+    
+    print("Enhanced test completed. Results saved to logs/enhanced_results.json")
+
+if __name__ == "__main__":
+    asyncio.run(test_enhanced_adaptation())
+Run the enhanced test:
+
+python3 advanced_test.py
+Verification and Validation
+Verify your adaptive scanning system works correctly:
+
+# Check all log files were created
+ls -la logs/
+
+# Verify workflow results
+cat logs/workflow_results.json | head -20
+
+# Check agent learning data
+cat logs/agent_state.json | grep -A 5 "learning_data"
+
+# Verify different scan techniques were used
+grep -o '"technique": "[^"]*"' logs/workflow_results.json | sort | uniq
+Conclusion
+You have successfully developed an adaptive scanning workflow system with AI agents that:
+
+Automated Decision Making: Created AI agents that analyze scan results and make intelligent decisions about next scanning steps
+Adaptive Behavior: Implemented workflows that modify scanning techniques based on discovered vulnerabilities and threat levels
+Learning Capabilities: Built agents that log actions and maintain state for continuous improvement
+Workflow Orchestration: Developed a system that coordinates multiple AI agents and manages complex scanning workflows
+This adaptive approach significantly improves scanning efficiency by focusing resources on high-value targets and adjusting techniques based on real-time findings. The AI-driven workflow automation reduces manual intervention while maintaining comprehensive security coverage, making it valuable for automated security operations and continuous monitoring systems.
