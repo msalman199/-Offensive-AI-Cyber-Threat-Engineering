@@ -1,0 +1,58 @@
+{
+  "name": "Nmap Results Parser",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/webhook/nmap-scan",
+        "httpMethod": "POST"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const scanData = items[0].json;\nconst vulnerabilities = [];\n\nfor (const host of scanData.hosts) {\n  for (const vuln of host.vulnerabilities) {\n    vulnerabilities.push({\n      ip: host.ip,\n      vulnerability: vuln.script,\n      details: vuln.output,\n      severity: vuln.output.includes('HIGH') ? 'HIGH' : \n                vuln.output.includes('MEDIUM') ? 'MEDIUM' : 'LOW'\n    });\n  }\n}\n\nreturn vulnerabilities.map(v => ({ json: v }));"
+      },
+      "name": "Parse Vulnerabilities",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/vulnerabilities.json",
+        "jsonData": "={{ JSON.stringify($json) }}"
+      },
+      "name": "Save Results",
+      "type": "n8n-nodes-base.writeFile",
+      "typeVersion": 1,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Vulnerabilities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Vulnerabilities": {
+      "main": [
+        [
+          {
+            "node": "Save Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
