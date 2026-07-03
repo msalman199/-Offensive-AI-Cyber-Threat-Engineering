@@ -1,0 +1,7 @@
+{
+    "proxy": {
+        "http": "http://127.0.0.1:8080",
+        "https": "http://127.0.0.1:8080"
+    },
+    "target": "http://localhost/DVWA/vulnerabilities/sqli/",
+    "cookies": "security=low; PHPSESSID=your_session_id"
