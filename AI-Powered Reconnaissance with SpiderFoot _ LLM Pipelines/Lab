@@ -1,0 +1,378 @@
+AI-Powered Reconnaissance with SpiderFoot + LLM Pipelines
+Learning Objectives
+By completing this lab, you will:
+
+Install and configure SpiderFoot for automated OSINT collection
+Integrate local LLM capabilities for intelligent data parsing and summarization
+Create automated reconnaissance workflows combining OSINT tools with AI analysis
+Develop practical skills in AI-enhanced cybersecurity reconnaissance
+Prerequisites
+Basic Linux command-line knowledge
+Understanding of OSINT concepts and reconnaissance techniques
+Familiarity with Python scripting
+Knowledge of cybersecurity fundamentals
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Simply click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools, so you'll install all required components during the lab exercises.
+
+Task 1: Set up SpiderFoot for OSINT Collection
+1.1 System Preparation and Dependencies
+Update the system and install required packages:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip git curl wget build-essential
+1.2 Install SpiderFoot
+Clone and set up SpiderFoot:
+
+cd /opt
+sudo git clone https://github.com/smicallef/spiderfoot.git
+sudo chown -R $USER:$USER spiderfoot
+cd spiderfoot
+pip3 install -r requirements.txt
+1.3 Configure SpiderFoot
+Start SpiderFoot web interface:
+
+python3 sf.py -l 0.0.0.0:5001
+Open a new terminal and verify SpiderFoot is running:
+
+curl -s http://localhost:5001 | grep -i spiderfoot
+1.4 Test Basic OSINT Collection
+Create a test scan using SpiderFoot's command-line interface:
+
+cd /opt/spiderfoot
+python3 sf.py -s example.com -t DOMAIN_NAME -m sfp_dnsresolve,sfp_whois,sfp_subdomain_enum -q
+Task 2: Integrate LLM for Data Parsing and Summarization
+2.1 Install Local LLM Framework
+Install Ollama for local LLM deployment:
+
+curl -fsSL https://ollama.ai/install.sh | sh
+Start Ollama service:
+
+ollama serve &
+sleep 10
+2.2 Deploy Lightweight LLM Model
+Pull and run a lightweight model suitable for text analysis:
+
+ollama pull llama2:7b-chat
+ollama list
+2.3 Create LLM Integration Script
+Create a Python script to interface with the LLM:
+
+mkdir -p /opt/recon-ai
+cd /opt/recon-ai
+Create the LLM integration script:
+
+cat > llm_analyzer.py << 'EOF'
+#!/usr/bin/env python3
+import requests
+import json
+import sys
+
+class LLMAnalyzer:
+    def __init__(self, model="llama2:7b-chat"):
+        self.model = model
+        self.ollama_url = "http://localhost:11434/api/generate"
+    
+    def analyze_osint_data(self, data, analysis_type="summary"):
+        prompts = {
+            "summary": f"Analyze this OSINT data and provide a concise security summary: {data}",
+            "threats": f"Identify potential security threats from this reconnaissance data: {data}",
+            "recommendations": f"Provide security recommendations based on this OSINT information: {data}"
+        }
+        
+        payload = {
+            "model": self.model,
+            "prompt": prompts.get(analysis_type, prompts["summary"]),
+            "stream": False
+        }
+        
+        try:
+            response = requests.post(self.ollama_url, json=payload, timeout=60)
+            if response.status_code == 200:
+                return response.json()["response"]
+            else:
+                return f"Error: {response.status_code}"
+        except Exception as e:
+            return f"Connection error: {str(e)}"
+
+if __name__ == "__main__":
+    analyzer = LLMAnalyzer()
+    if len(sys.argv) > 1:
+        result = analyzer.analyze_osint_data(sys.argv[1])
+        print(result)
+    else:
+        print("Usage: python3 llm_analyzer.py 'data_to_analyze'")
+EOF
+
+chmod +x llm_analyzer.py
+2.4 Test LLM Integration
+Test the LLM analyzer with sample data:
+
+python3 llm_analyzer.py "Domain: example.com, IP: 93.184.216.34, Subdomains: www.example.com, mail.example.com"
+Task 3: Automate Reconnaissance Workflows
+3.1 Create SpiderFoot Data Extraction Script
+Create a script to extract and format SpiderFoot results:
+
+cat > spiderfoot_extractor.py << 'EOF'
+#!/usr/bin/env python3
+import sqlite3
+import json
+import sys
+import os
+
+class SpiderFootExtractor:
+    def __init__(self, db_path="/opt/spiderfoot/spiderfoot.db"):
+        self.db_path = db_path
+    
+    def extract_scan_data(self, scan_id=None):
+        if not os.path.exists(self.db_path):
+            return {"error": "SpiderFoot database not found"}
+        
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        if scan_id:
+            query = "SELECT * FROM tbl_scan_results WHERE scan_instance_id = ?"
+            cursor.execute(query, (scan_id,))
+        else:
+            query = "SELECT * FROM tbl_scan_results ORDER BY generated DESC LIMIT 50"
+            cursor.execute(query)
+        
+        results = cursor.fetchall()
+        conn.close()
+        
+        formatted_results = []
+        for row in results:
+            formatted_results.append({
+                "module": row[1],
+                "type": row[2],
+                "data": row[3],
+                "source": row[4]
+            })
+        
+        return formatted_results
+    
+    def get_latest_scan_summary(self):
+        data = self.extract_scan_data()
+        if isinstance(data, dict) and "error" in data:
+            return data
+        
+        summary = {
+            "total_findings": len(data),
+            "domains": [],
+            "ips": [],
+            "emails": []
+        }
+        
+        for item in data:
+            if "DOMAIN" in item["type"]:
+                summary["domains"].append(item["data"])
+            elif "IP" in item["type"]:
+                summary["ips"].append(item["data"])
+            elif "EMAIL" in item["type"]:
+                summary["emails"].append(item["data"])
+        
+        return summary
+
+if __name__ == "__main__":
+    extractor = SpiderFootExtractor()
+    summary = extractor.get_latest_scan_summary()
+    print(json.dumps(summary, indent=2))
+EOF
+
+chmod +x spiderfoot_extractor.py
+3.2 Create Automated Reconnaissance Pipeline
+Create the main automation script:
+
+cat > recon_pipeline.py << 'EOF'
+#!/usr/bin/env python3
+import subprocess
+import json
+import time
+import sys
+from llm_analyzer import LLMAnalyzer
+from spiderfoot_extractor import SpiderFootExtractor
+
+class ReconPipeline:
+    def __init__(self):
+        self.analyzer = LLMAnalyzer()
+        self.extractor = SpiderFootExtractor()
+    
+    def run_spiderfoot_scan(self, target, modules="sfp_dnsresolve,sfp_whois,sfp_subdomain_enum"):
+        print(f"Starting SpiderFoot scan for: {target}")
+        cmd = [
+            "python3", "/opt/spiderfoot/sf.py",
+            "-s", target,
+            "-t", "DOMAIN_NAME",
+            "-m", modules,
+            "-q"
+        ]
+        
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            if result.returncode == 0:
+                print("SpiderFoot scan completed successfully")
+                return True
+            else:
+                print(f"SpiderFoot scan failed: {result.stderr}")
+                return False
+        except subprocess.TimeoutExpired:
+            print("SpiderFoot scan timed out")
+            return False
+    
+    def analyze_results(self):
+        print("Extracting SpiderFoot results...")
+        time.sleep(5)  # Allow database to update
+        
+        summary = self.extractor.get_latest_scan_summary()
+        if "error" in summary:
+            print(f"Error extracting data: {summary['error']}")
+            return None
+        
+        print("Analyzing results with LLM...")
+        analysis_data = json.dumps(summary)
+        
+        # Get different types of analysis
+        threat_analysis = self.analyzer.analyze_osint_data(analysis_data, "threats")
+        recommendations = self.analyzer.analyze_osint_data(analysis_data, "recommendations")
+        
+        return {
+            "raw_summary": summary,
+            "threat_analysis": threat_analysis,
+            "recommendations": recommendations
+        }
+    
+    def generate_report(self, target, analysis):
+        report = f"""
+# AI-Powered Reconnaissance Report for {target}
+
+## Raw Data Summary
+- Total Findings: {analysis['raw_summary']['total_findings']}
+- Domains Found: {len(analysis['raw_summary']['domains'])}
+- IP Addresses: {len(analysis['raw_summary']['ips'])}
+- Email Addresses: {len(analysis['raw_summary']['emails'])}
+
+## AI Threat Analysis
+{analysis['threat_analysis']}
+
+## AI Security Recommendations
+{analysis['recommendations']}
+
+Generated by AI-Powered Reconnaissance Pipeline
+"""
+        
+        filename = f"recon_report_{target.replace('.', '_')}.md"
+        with open(filename, 'w') as f:
+            f.write(report)
+        
+        print(f"Report saved to: {filename}")
+        return filename
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python3 recon_pipeline.py <target_domain>")
+        sys.exit(1)
+    
+    target = sys.argv[1]
+    pipeline = ReconPipeline()
+    
+    # Run the complete pipeline
+    if pipeline.run_spiderfoot_scan(target):
+        analysis = pipeline.analyze_results()
+        if analysis:
+            pipeline.generate_report(target, analysis)
+            print("Reconnaissance pipeline completed successfully!")
+        else:
+            print("Failed to analyze results")
+    else:
+        print("Failed to run SpiderFoot scan")
+
+if __name__ == "__main__":
+    main()
+EOF
+
+chmod +x recon_pipeline.py
+3.3 Test Complete Automation Pipeline
+Run the complete automated reconnaissance pipeline:
+
+cd /opt/recon-ai
+python3 recon_pipeline.py example.com
+3.4 Verify Results
+Check the generated report:
+
+ls -la *.md
+cat recon_report_example_com.md
+3.5 Create Batch Processing Script
+Create a script for processing multiple targets:
+
+cat > batch_recon.py << 'EOF'
+#!/usr/bin/env python3
+import sys
+import time
+from recon_pipeline import ReconPipeline
+
+def batch_reconnaissance(targets_file):
+    pipeline = ReconPipeline()
+    
+    with open(targets_file, 'r') as f:
+        targets = [line.strip() for line in f if line.strip()]
+    
+    for target in targets:
+        print(f"\n{'='*50}")
+        print(f"Processing target: {target}")
+        print(f"{'='*50}")
+        
+        if pipeline.run_spiderfoot_scan(target):
+            analysis = pipeline.analyze_results()
+            if analysis:
+                pipeline.generate_report(target, analysis)
+            time.sleep(10)  # Delay between scans
+        else:
+            print(f"Failed to scan {target}")
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python3 batch_recon.py targets.txt")
+        sys.exit(1)
+    
+    batch_reconnaissance(sys.argv[1])
+EOF
+
+chmod +x batch_recon.py
+Create a sample targets file:
+
+cat > targets.txt << 'EOF'
+example.com
+google.com
+github.com
+EOF
+Test batch processing with one target:
+
+echo "example.com" > test_target.txt
+python3 batch_recon.py test_target.txt
+Verification and Testing
+Verify All Components
+Check that all services are running:
+
+# Check Ollama
+curl -s http://localhost:11434/api/tags | jq .
+
+# Check SpiderFoot database
+ls -la /opt/spiderfoot/spiderfoot.db
+
+# Check generated reports
+ls -la /opt/recon-ai/*.md
+Performance Test
+Run a quick performance test:
+
+cd /opt/recon-ai
+time python3 recon_pipeline.py example.com
+Conclusion
+You have successfully created an AI-powered reconnaissance system that combines traditional OSINT collection with modern LLM analysis capabilities. This lab demonstrated how to:
+
+Set up and configure SpiderFoot for automated OSINT collection
+Deploy and integrate local LLM models for intelligent data analysis
+Create automated workflows that combine reconnaissance tools with AI-powered insights
+Generate comprehensive security reports with threat analysis and recommendations
+This integration represents the evolution of cybersecurity reconnaissance, where AI enhances traditional tools to provide deeper insights and more actionable intelligence. The skills developed in this lab are directly applicable to modern security operations, threat intelligence, and penetration testing workflows.
+
+The automated pipeline you built can be extended with additional OSINT tools, different LLM models, and custom analysis modules to meet specific organizational requirements.
