@@ -1,0 +1,14 @@
+{
+  "targets": {
+    "domains": ["github.com"],
+    "shodan_queries": ["apache", "nginx"]
+  },
+  "schedule": {
+    "interval_hours": 1,
+    "max_results": 50
+  },
+  "notifications": {
+    "enabled": false,
+    "webhook_url": ""
+  }
+}
