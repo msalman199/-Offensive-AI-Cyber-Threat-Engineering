@@ -1,0 +1,769 @@
+Asset Correlation & Discovery Using AI-Augmented Shodan/Amass
+Learning Objectives
+By completing this lab, you will:
+
+Configure and utilize Shodan API for comprehensive asset discovery
+Deploy Amass for subdomain enumeration and network mapping
+Implement AI-powered correlation techniques to analyze discovered assets
+Create automated workflows for continuous asset monitoring
+Develop skills in correlating disparate data sources for enhanced reconnaissance
+Prerequisites
+Basic understanding of network protocols and DNS
+Familiarity with Linux command line operations
+Knowledge of Python programming fundamentals
+Understanding of cybersecurity reconnaissance concepts
+Experience with API interactions and JSON data parsing
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Simply click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools, requiring you to install all necessary components during the lab exercises.
+
+Task 1: Set up Shodan and Amass for Asset Discovery
+Subtask 1.1: Install Required Dependencies
+Update the system and install essential packages:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip git curl wget unzip golang-go
+Subtask 1.2: Install and Configure Shodan
+Install Shodan CLI and Python library:
+
+pip3 install shodan
+Create a Shodan account and obtain your API key from https://account.shodan.io/. Then configure it:
+
+shodan init YOUR_API_KEY_HERE
+Test the Shodan installation:
+
+shodan info
+Subtask 1.3: Install Amass
+Install Amass using Go:
+
+go install -v github.com/owasp-amass/amass/v4/...@master
+Add Go bin to PATH:
+
+echo 'export PATH=$PATH:$(go env GOPATH)/bin' >> ~/.bashrc
+source ~/.bashrc
+Verify Amass installation:
+
+amass version
+Subtask 1.4: Create Working Directory Structure
+Set up organized directories for the lab:
+
+mkdir -p ~/asset-discovery/{data,scripts,results,ai-models}
+cd ~/asset-discovery
+Task 2: Integrate AI for Asset Correlation
+Subtask 2.1: Install AI/ML Dependencies
+Install required Python libraries for AI integration:
+
+pip3 install pandas numpy scikit-learn matplotlib seaborn networkx requests beautifulsoup4 python-whois
+Subtask 2.2: Create AI-Powered Asset Correlation Script
+Create the main correlation script:
+
+cat > scripts/ai_asset_correlator.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import pandas as pd
+import numpy as np
+from sklearn.cluster import DBSCAN
+from sklearn.preprocessing import StandardScaler
+from sklearn.feature_extraction.text import TfidfVectorizer
+import networkx as nx
+import requests
+import subprocess
+import sys
+from datetime import datetime
+
+class AIAssetCorrelator:
+    def __init__(self):
+        self.assets_df = pd.DataFrame()
+        self.correlation_graph = nx.Graph()
+        
+    def load_shodan_data(self, query, limit=100):
+        """Load asset data from Shodan"""
+        try:
+            cmd = f"shodan search --fields ip_str,port,org,hostnames,product,version '{query}' --limit {limit}"
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            
+            assets = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    parts = line.split('\t')
+                    if len(parts) >= 6:
+                        assets.append({
+                            'ip': parts[0],
+                            'port': parts[1],
+                            'org': parts[2],
+                            'hostnames': parts[3],
+                            'product': parts[4],
+                            'version': parts[5],
+                            'source': 'shodan'
+                        })
+            return assets
+        except Exception as e:
+            print(f"Error loading Shodan data: {e}")
+            return []
+    
+    def load_amass_data(self, domain):
+        """Load subdomain data from Amass"""
+        try:
+            cmd = f"amass enum -passive -d {domain} -json"
+            result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+            
+            assets = []
+            for line in result.stdout.strip().split('\n'):
+                if line:
+                    try:
+                        data = json.loads(line)
+                        assets.append({
+                            'domain': data.get('name', ''),
+                            'ip': ','.join(data.get('addresses', [])),
+                            'source': 'amass',
+                            'type': data.get('type', ''),
+                            'tag': data.get('tag', '')
+                        })
+                    except json.JSONDecodeError:
+                        continue
+            return assets
+        except Exception as e:
+            print(f"Error loading Amass data: {e}")
+            return []
+    
+    def correlate_assets(self, shodan_assets, amass_assets):
+        """Use AI to correlate assets from different sources"""
+        # Combine datasets
+        all_assets = []
+        
+        # Process Shodan assets
+        for asset in shodan_assets:
+            all_assets.append({
+                'identifier': asset['ip'],
+                'secondary_id': asset.get('hostnames', ''),
+                'org': asset.get('org', ''),
+                'product': asset.get('product', ''),
+                'port': asset.get('port', ''),
+                'source': 'shodan',
+                'risk_score': self.calculate_risk_score(asset)
+            })
+        
+        # Process Amass assets
+        for asset in amass_assets:
+            all_assets.append({
+                'identifier': asset['domain'],
+                'secondary_id': asset.get('ip', ''),
+                'org': '',
+                'product': '',
+                'port': '',
+                'source': 'amass',
+                'risk_score': self.calculate_risk_score(asset)
+            })
+        
+        self.assets_df = pd.DataFrame(all_assets)
+        
+        # Perform clustering for correlation
+        self.perform_clustering()
+        
+        # Build correlation graph
+        self.build_correlation_graph()
+        
+        return self.assets_df
+    
+    def calculate_risk_score(self, asset):
+        """Calculate risk score based on asset characteristics"""
+        score = 0
+        
+        # High-risk ports
+        high_risk_ports = ['22', '23', '80', '443', '3389', '5900']
+        if asset.get('port') in high_risk_ports:
+            score += 3
+        
+        # Known vulnerable products
+        vulnerable_products = ['apache', 'nginx', 'iis', 'ssh']
+        product = asset.get('product', '').lower()
+        if any(vp in product for vp in vulnerable_products):
+            score += 2
+        
+        # External facing (has public IP)
+        if asset.get('ip') and not asset['ip'].startswith(('10.', '192.168.', '172.')):
+            score += 1
+        
+        return min(score, 10)  # Cap at 10
+    
+    def perform_clustering(self):
+        """Use DBSCAN clustering to group related assets"""
+        if self.assets_df.empty:
+            return
+        
+        # Create feature vectors for clustering
+        features = []
+        for _, row in self.assets_df.iterrows():
+            feature_text = f"{row['org']} {row['product']} {row['secondary_id']}"
+            features.append(feature_text)
+        
+        # TF-IDF vectorization
+        vectorizer = TfidfVectorizer(max_features=100, stop_words='english')
+        feature_matrix = vectorizer.fit_transform(features)
+        
+        # DBSCAN clustering
+        clustering = DBSCAN(eps=0.3, min_samples=2)
+        clusters = clustering.fit_predict(feature_matrix.toarray())
+        
+        self.assets_df['cluster'] = clusters
+    
+    def build_correlation_graph(self):
+        """Build a network graph showing asset relationships"""
+        for _, asset in self.assets_df.iterrows():
+            self.correlation_graph.add_node(
+                asset['identifier'],
+                source=asset['source'],
+                risk_score=asset['risk_score'],
+                cluster=asset['cluster']
+            )
+        
+        # Add edges between assets in the same cluster
+        clusters = self.assets_df.groupby('cluster')
+        for cluster_id, group in clusters:
+            if cluster_id != -1:  # Ignore noise points
+                assets_in_cluster = group['identifier'].tolist()
+                for i, asset1 in enumerate(assets_in_cluster):
+                    for asset2 in assets_in_cluster[i+1:]:
+                        self.correlation_graph.add_edge(asset1, asset2, weight=0.8)
+    
+    def generate_report(self, output_file):
+        """Generate comprehensive correlation report"""
+        report = {
+            'timestamp': datetime.now().isoformat(),
+            'total_assets': len(self.assets_df),
+            'sources': self.assets_df['source'].value_counts().to_dict(),
+            'clusters_found': len(self.assets_df['cluster'].unique()) - (1 if -1 in self.assets_df['cluster'].values else 0),
+            'high_risk_assets': len(self.assets_df[self.assets_df['risk_score'] >= 7]),
+            'correlation_summary': self.get_correlation_summary()
+        }
+        
+        with open(output_file, 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        print(f"Report generated: {output_file}")
+        return report
+    
+    def get_correlation_summary(self):
+        """Get summary of correlations found"""
+        summary = {}
+        clusters = self.assets_df.groupby('cluster')
+        
+        for cluster_id, group in clusters:
+            if cluster_id != -1:
+                summary[f'cluster_{cluster_id}'] = {
+                    'asset_count': len(group),
+                    'sources': group['source'].unique().tolist(),
+                    'avg_risk_score': group['risk_score'].mean(),
+                    'assets': group['identifier'].tolist()
+                }
+        
+        return summary
+
+if __name__ == "__main__":
+    if len(sys.argv) < 3:
+        print("Usage: python3 ai_asset_correlator.py <shodan_query> <target_domain>")
+        sys.exit(1)
+    
+    correlator = AIAssetCorrelator()
+    
+    # Load data from both sources
+    print("Loading Shodan data...")
+    shodan_assets = correlator.load_shodan_data(sys.argv[1])
+    
+    print("Loading Amass data...")
+    amass_assets = correlator.load_amass_data(sys.argv[2])
+    
+    # Correlate assets
+    print("Correlating assets using AI...")
+    correlated_df = correlator.correlate_assets(shodan_assets, amass_assets)
+    
+    # Generate report
+    report = correlator.generate_report('results/correlation_report.json')
+    
+    print(f"\nCorrelation Summary:")
+    print(f"Total assets discovered: {report['total_assets']}")
+    print(f"Clusters identified: {report['clusters_found']}")
+    print(f"High-risk assets: {report['high_risk_assets']}")
+EOF
+
+chmod +x scripts/ai_asset_correlator.py
+Subtask 2.3: Create Asset Visualization Script
+Create a script to visualize correlations:
+
+cat > scripts/visualize_correlations.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import matplotlib.pyplot as plt
+import networkx as nx
+import pandas as pd
+from matplotlib.patches import Patch
+
+def visualize_asset_correlations(report_file):
+    """Create visualizations of asset correlations"""
+    
+    with open(report_file, 'r') as f:
+        report = json.load(f)
+    
+    # Create figure with subplots
+    fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(15, 12))
+    
+    # 1. Source distribution pie chart
+    sources = report['sources']
+    ax1.pie(sources.values(), labels=sources.keys(), autopct='%1.1f%%')
+    ax1.set_title('Asset Sources Distribution')
+    
+    # 2. Risk score distribution
+    if 'correlation_summary' in report:
+        clusters = report['correlation_summary']
+        risk_scores = [cluster['avg_risk_score'] for cluster in clusters.values()]
+        ax2.hist(risk_scores, bins=10, alpha=0.7, color='red')
+        ax2.set_title('Risk Score Distribution by Cluster')
+        ax2.set_xlabel('Average Risk Score')
+        ax2.set_ylabel('Number of Clusters')
+    
+    # 3. Cluster size distribution
+    if 'correlation_summary' in report:
+        cluster_sizes = [cluster['asset_count'] for cluster in clusters.values()]
+        ax3.bar(range(len(cluster_sizes)), cluster_sizes, color='blue', alpha=0.7)
+        ax3.set_title('Assets per Cluster')
+        ax3.set_xlabel('Cluster ID')
+        ax3.set_ylabel('Number of Assets')
+    
+    # 4. Summary statistics
+    ax4.axis('off')
+    stats_text = f"""
+    Asset Discovery Summary
+    
+    Total Assets: {report['total_assets']}
+    Clusters Found: {report['clusters_found']}
+    High-Risk Assets: {report['high_risk_assets']}
+    
+    Discovery Sources:
+    """
+    for source, count in sources.items():
+        stats_text += f"  • {source}: {count}\n"
+    
+    ax4.text(0.1, 0.9, stats_text, transform=ax4.transAxes, 
+             fontsize=12, verticalalignment='top', fontfamily='monospace')
+    
+    plt.tight_layout()
+    plt.savefig('results/correlation_visualization.png', dpi=300, bbox_inches='tight')
+    print("Visualization saved: results/correlation_visualization.png")
+
+if __name__ == "__main__":
+    import sys
+    if len(sys.argv) < 2:
+        print("Usage: python3 visualize_correlations.py <report_file>")
+        sys.exit(1)
+    
+    visualize_asset_correlations(sys.argv[1])
+EOF
+
+chmod +x scripts/visualize_correlations.py
+Task 3: Automate Asset Discovery Workflows
+Subtask 3.1: Create Automated Discovery Script
+Create a comprehensive automation script:
+
+cat > scripts/automated_discovery.py << 'EOF'
+#!/usr/bin/env python3
+import subprocess
+import json
+import time
+import schedule
+import argparse
+from datetime import datetime, timedelta
+import os
+
+class AutomatedAssetDiscovery:
+    def __init__(self, config_file):
+        self.config = self.load_config(config_file)
+        self.results_dir = "results"
+        self.ensure_directories()
+    
+    def load_config(self, config_file):
+        """Load configuration from JSON file"""
+        try:
+            with open(config_file, 'r') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            print(f"Config file {config_file} not found. Creating default...")
+            default_config = {
+                "targets": {
+                    "domains": ["example.com"],
+                    "shodan_queries": ["apache", "nginx"]
+                },
+                "schedule": {
+                    "interval_hours": 24,
+                    "max_results": 100
+                },
+                "notifications": {
+                    "enabled": False,
+                    "webhook_url": ""
+                }
+            }
+            with open(config_file, 'w') as f:
+                json.dump(default_config, f, indent=2)
+            return default_config
+    
+    def ensure_directories(self):
+        """Create necessary directories"""
+        os.makedirs(self.results_dir, exist_ok=True)
+        os.makedirs("logs", exist_ok=True)
+    
+    def run_discovery_cycle(self):
+        """Execute a complete discovery cycle"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        log_file = f"logs/discovery_{timestamp}.log"
+        
+        print(f"Starting discovery cycle at {datetime.now()}")
+        
+        with open(log_file, 'w') as log:
+            log.write(f"Discovery cycle started: {datetime.now()}\n")
+            
+            # Run for each domain
+            for domain in self.config['targets']['domains']:
+                log.write(f"Processing domain: {domain}\n")
+                
+                # Run Amass
+                amass_output = f"{self.results_dir}/amass_{domain}_{timestamp}.json"
+                amass_cmd = f"amass enum -passive -d {domain} -json -o {amass_output}"
+                
+                try:
+                    subprocess.run(amass_cmd, shell=True, check=True, timeout=300)
+                    log.write(f"Amass completed for {domain}\n")
+                except subprocess.TimeoutExpired:
+                    log.write(f"Amass timeout for {domain}\n")
+                except subprocess.CalledProcessError as e:
+                    log.write(f"Amass error for {domain}: {e}\n")
+            
+            # Run Shodan queries
+            for query in self.config['targets']['shodan_queries']:
+                log.write(f"Processing Shodan query: {query}\n")
+                
+                shodan_output = f"{self.results_dir}/shodan_{query.replace(' ', '_')}_{timestamp}.json"
+                shodan_cmd = f"shodan search --fields ip_str,port,org,hostnames,product,version '{query}' --limit {self.config['schedule']['max_results']} > {shodan_output}"
+                
+                try:
+                    subprocess.run(shodan_cmd, shell=True, check=True, timeout=120)
+                    log.write(f"Shodan completed for query: {query}\n")
+                except subprocess.TimeoutExpired:
+                    log.write(f"Shodan timeout for query: {query}\n")
+                except subprocess.CalledProcessError as e:
+                    log.write(f"Shodan error for query {query}: {e}\n")
+            
+            # Run correlation analysis
+            if self.config['targets']['domains'] and self.config['targets']['shodan_queries']:
+                correlation_cmd = f"python3 scripts/ai_asset_correlator.py '{self.config['targets']['shodan_queries'][0]}' {self.config['targets']['domains'][0]}"
+                
+                try:
+                    subprocess.run(correlation_cmd, shell=True, check=True, timeout=180)
+                    log.write("AI correlation completed\n")
+                    
+                    # Generate visualization
+                    subprocess.run("python3 scripts/visualize_correlations.py results/correlation_report.json", 
+                                 shell=True, check=True, timeout=60)
+                    log.write("Visualization generated\n")
+                    
+                except subprocess.TimeoutExpired:
+                    log.write("Correlation analysis timeout\n")
+                except subprocess.CalledProcessError as e:
+                    log.write(f"Correlation analysis error: {e}\n")
+            
+            log.write(f"Discovery cycle completed: {datetime.now()}\n")
+        
+        print(f"Discovery cycle completed. Log: {log_file}")
+        
+        # Send notification if enabled
+        if self.config['notifications']['enabled']:
+            self.send_notification(f"Asset discovery completed at {datetime.now()}")
+    
+    def send_notification(self, message):
+        """Send notification via webhook"""
+        if self.config['notifications']['webhook_url']:
+            try:
+                import requests
+                payload = {"text": message}
+                requests.post(self.config['notifications']['webhook_url'], json=payload)
+            except Exception as e:
+                print(f"Notification failed: {e}")
+    
+    def start_scheduler(self):
+        """Start the automated scheduler"""
+        interval = self.config['schedule']['interval_hours']
+        schedule.every(interval).hours.do(self.run_discovery_cycle)
+        
+        print(f"Scheduler started. Running every {interval} hours.")
+        print("Press Ctrl+C to stop.")
+        
+        # Run initial discovery
+        self.run_discovery_cycle()
+        
+        try:
+            while True:
+                schedule.run_pending()
+                time.sleep(60)  # Check every minute
+        except KeyboardInterrupt:
+            print("\nScheduler stopped.")
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Automated Asset Discovery')
+    parser.add_argument('--config', default='config/discovery_config.json', 
+                       help='Configuration file path')
+    parser.add_argument('--once', action='store_true', 
+                       help='Run once instead of scheduling')
+    
+    args = parser.parse_args()
+    
+    # Create config directory
+    os.makedirs('config', exist_ok=True)
+    
+    discovery = AutomatedAssetDiscovery(args.config)
+    
+    if args.once:
+        discovery.run_discovery_cycle()
+    else:
+        discovery.start_scheduler()
+EOF
+
+chmod +x scripts/automated_discovery.py
+Subtask 3.2: Create Monitoring Dashboard Script
+Create a simple monitoring dashboard:
+
+cat > scripts/monitoring_dashboard.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+import glob
+from datetime import datetime, timedelta
+import matplotlib.pyplot as plt
+import pandas as pd
+
+class AssetMonitoringDashboard:
+    def __init__(self, results_dir="results"):
+        self.results_dir = results_dir
+    
+    def get_recent_reports(self, days=7):
+        """Get correlation reports from the last N days"""
+        cutoff_date = datetime.now() - timedelta(days=days)
+        reports = []
+        
+        for report_file in glob.glob(f"{self.results_dir}/correlation_report*.json"):
+            try:
+                with open(report_file, 'r') as f:
+                    report = json.load(f)
+                    report_date = datetime.fromisoformat(report['timestamp'].replace('Z', '+00:00').replace('+00:00', ''))
+                    
+                    if report_date >= cutoff_date:
+                        report['file'] = report_file
+                        reports.append(report)
+            except Exception as e:
+                print(f"Error reading {report_file}: {e}")
+        
+        return sorted(reports, key=lambda x: x['timestamp'])
+    
+    def generate_trend_analysis(self, reports):
+        """Generate trend analysis from multiple reports"""
+        if not reports:
+            print("No reports found for trend analysis")
+            return
+        
+        # Extract trend data
+        timestamps = [datetime.fromisoformat(r['timestamp'].replace('Z', '+00:00').replace('+00:00', '')) for r in reports]
+        total_assets = [r['total_assets'] for r in reports]
+        high_risk_assets = [r['high_risk_assets'] for r in reports]
+        clusters_found = [r['clusters_found'] for r in reports]
+        
+        # Create trend visualization
+        fig, (ax1, ax2, ax3) = plt.subplots(3, 1, figsize=(12, 10))
+        
+        # Total assets trend
+        ax1.plot(timestamps, total_assets, marker='o', color='blue')
+        ax1.set_title('Total Assets Discovered Over Time')
+        ax1.set_ylabel('Number of Assets')
+        ax1.grid(True, alpha=0.3)
+        
+        # High-risk assets trend
+        ax2.plot(timestamps, high_risk_assets, marker='s', color='red')
+        ax2.set_title('High-Risk Assets Over Time')
+        ax2.set_ylabel('High-Risk Assets')
+        ax2.grid(True, alpha=0.3)
+        
+        # Clusters trend
+        ax3.plot(timestamps, clusters_found, marker='^', color='green')
+        ax3.set_title('Asset Clusters Identified Over Time')
+        ax3.set_ylabel('Number of Clusters')
+        ax3.set_xlabel('Date')
+        ax3.grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.xticks(rotation=45)
+        plt.savefig(f'{self.results_dir}/trend_analysis.png', dpi=300, bbox_inches='tight')
+        print(f"Trend analysis saved: {self.results_dir}/trend_analysis.png")
+    
+    def generate_summary_report(self, reports):
+        """Generate a comprehensive summary report"""
+        if not reports:
+            return
+        
+        latest_report = reports[-1]
+        
+        summary = {
+            "dashboard_generated": datetime.now().isoformat(),
+            "analysis_period": f"Last {len(reports)} reports",
+            "latest_scan": latest_report['timestamp'],
+            "current_stats": {
+                "total_assets": latest_report['total_assets'],
+                "high_risk_assets": latest_report['high_risk_assets'],
+                "clusters_found": latest_report['clusters_found']
+            },
+            "trends": {
+                "avg_assets_per_scan": sum(r['total_assets'] for r in reports) / len(reports),
+                "avg_high_risk_per_scan": sum(r['high_risk_assets'] for r in reports) / len(reports),
+                "avg_clusters_per_scan": sum(r['clusters_found'] for r in reports) / len(reports)
+            },
+            "recommendations": self.generate_recommendations(reports)
+        }
+        
+        with open(f'{self.results_dir}/dashboard_summary.json', 'w') as f:
+            json.dump(summary, f, indent=2)
+        
+        print("Dashboard Summary:")
+        print(f"  Latest scan: {summary['latest_scan']}")
+        print(f"  Current assets: {summary['current_stats']['total_assets']}")
+        print(f"  High-risk assets: {summary['current_stats']['high_risk_assets']}")
+        print(f"  Clusters identified: {summary['current_stats']['clusters_found']}")
+        
+        return summary
+    
+    def generate_recommendations(self, reports):
+        """Generate security recommendations based on trends"""
+        recommendations = []
+        
+        if not reports:
+            return recommendations
+        
+        latest = reports[-1]
+        
+        # High-risk asset recommendations
+        if latest['high_risk_assets'] > 0:
+            recommendations.append({
+                "priority": "HIGH",
+                "category": "Risk Management",
+                "description": f"Found {latest['high_risk_assets']} high-risk assets requiring immediate attention"
+            })
+        
+        # Clustering recommendations
+        if latest['clusters_found'] > 5:
+            recommendations.append({
+                "priority": "MEDIUM",
+                "category": "Asset Management",
+                "description": f"Large number of asset clusters ({latest['clusters_found']}) detected - consider consolidation"
+            })
+        
+        # Trend-based recommendations
+        if len(reports) > 1:
+            asset_growth = latest['total_assets'] - reports[0]['total_assets']
+            if asset_growth > 10:
+                recommendations.append({
+                    "priority": "MEDIUM",
+                    "category": "Monitoring",
+                    "description": f"Significant asset growth detected (+{asset_growth}) - increase monitoring frequency"
+                })
+        
+        return recommendations
+
+if __name__ == "__main__":
+    dashboard = AssetMonitoringDashboard()
+    
+    print("Generating Asset Discovery Dashboard...")
+    
+    # Get recent reports
+    reports = dashboard.get_recent_reports(days=30)
+    
+    if reports:
+        # Generate trend analysis
+        dashboard.generate_trend_analysis(reports)
+        
+        # Generate summary report
+        summary = dashboard.generate_summary_report(reports)
+        
+        print(f"\nDashboard generated successfully!")
+        print(f"Reports analyzed: {len(reports)}")
+        
+        if summary and summary['recommendations']:
+            print("\nRecommendations:")
+            for rec in summary['recommendations']:
+                print(f"  [{rec['priority']}] {rec['category']}: {rec['description']}")
+    else:
+        print("No recent reports found. Run some discovery scans first.")
+EOF
+
+chmod +x scripts/monitoring_dashboard.py
+Subtask 3.3: Test the Complete Workflow
+Create a test configuration and run the workflow:
+
+# Create test configuration
+mkdir -p config
+cat > config/test_config.json << 'EOF'
+{
+  "targets": {
+    "domains": ["github.com"],
+    "shodan_queries": ["apache", "nginx"]
+  },
+  "schedule": {
+    "interval_hours": 1,
+    "max_results": 50
+  },
+  "notifications": {
+    "enabled": false,
+    "webhook_url": ""
+  }
+}
+EOF
+
+# Run a single discovery cycle
+python3 scripts/automated_discovery.py --config config/test_config.json --once
+Subtask 3.4: Generate Monitoring Dashboard
+After running the discovery, generate the monitoring dashboard:
+
+# Generate dashboard
+python3 scripts/monitoring_dashboard.py
+
+# View results
+ls -la results/
+Verification and Testing
+Test Asset Discovery Integration
+Verify that all components work together:
+
+# Test Shodan connectivity
+shodan info
+
+# Test Amass functionality
+amass enum -passive -d github.com -timeout 30
+
+# Test AI correlation script
+python3 scripts/ai_asset_correlator.py "apache" "github.com"
+
+# Check generated reports
+cat results/correlation_report.json | head -20
+Validate Automation Workflow
+Test the automated discovery system:
+
+# Run automated discovery once
+python3 scripts/automated_discovery.py --config config/test_config.json --once
+
+# Check logs
+ls -la logs/
+
+# Verify dashboard generation
+python3 scripts/monitoring_dashboard.py
+Troubleshooting Common Issues
+Shodan API Issues: Ensure your API key is valid and has sufficient query credits Amass Timeout: Increase timeout values for large domains Python Dependencies: Install missing packages using pip3 Permission Errors: Ensure scripts have execute permissions with chmod +x
+
+Conclusion
+You have successfully implemented an AI-augmented asset discovery and correlation system using Shodan and Amass. This lab demonstrated how to:
+
+Configure professional reconnaissance tools for comprehensive asset discovery
+Implement machine learning algorithms for intelligent asset correlation
+Create automated workflows for continuous security monitoring
+Develop visualization and reporting capabilities for security analysis
+This integrated approach provides security professionals with powerful capabilities for maintaining comprehensive asset inventories, identifying security risks, and correlating disparate data sources for enhanced threat intelligence. The AI-powered correlation engine enables more effective asset management and risk assessment in complex network environments.
