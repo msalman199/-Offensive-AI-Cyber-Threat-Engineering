@@ -1,0 +1,674 @@
+Automated Nmap Parsing with N8N + RAG
+Learning Objectives
+By completing this lab, you will:
+
+Configure and execute automated Nmap network scanning
+Parse Nmap XML output using N8N workflow automation
+Implement RAG (Retrieval-Augmented Generation) for enhanced vulnerability analysis
+Create an automated pipeline for network security assessment
+Prerequisites
+Basic Linux command line knowledge
+Understanding of network scanning concepts
+Familiarity with JSON/XML data structures
+Basic Python scripting experience
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools - you will install all required components during the lab.
+
+Task 1: Environment Setup and Tool Installation
+Subtask 1.1: Install Required Dependencies
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Install essential packages
+sudo apt install -y curl wget git python3 python3-pip nodejs npm nmap
+
+# Install Docker for N8N
+curl -fsSL https://get.docker.com -o get-docker.sh
+sudo sh get-docker.sh
+sudo usermod -aG docker $USER
+newgrp docker
+
+# Install Python dependencies
+pip3 install requests beautifulsoup4 lxml pandas numpy
+Subtask 1.2: Install N8N Automation Platform
+# Install N8N using Docker
+docker run -it --rm --name n8n -p 5678:5678 -v ~/.n8n:/home/node/.n8n n8nio/n8n
+
+# In a new terminal, verify N8N is running
+curl -s http://localhost:5678 | grep -q "n8n" && echo "N8N is running" || echo "N8N failed to start"
+Subtask 1.3: Create Working Directory Structure
+# Create project directory
+mkdir -p ~/nmap-rag-lab/{scans,scripts,data,workflows}
+cd ~/nmap-rag-lab
+
+# Create sample target list
+echo "127.0.0.1
+10.0.0.1/24" > targets.txt
+Task 2: Configure Nmap Scanning
+Subtask 2.1: Create Automated Nmap Scanner Script
+# Create nmap scanning script
+cat > scripts/nmap_scanner.py << 'EOF'
+#!/usr/bin/env python3
+import subprocess
+import json
+import xml.etree.ElementTree as ET
+import sys
+from datetime import datetime
+
+def run_nmap_scan(target, output_file):
+    """Execute Nmap scan and save results"""
+    cmd = [
+        'nmap', '-sS', '-sV', '-O', '--script=vuln',
+        '-oX', output_file, target
+    ]
+    
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        if result.returncode == 0:
+            print(f"Scan completed for {target}")
+            return True
+        else:
+            print(f"Scan failed: {result.stderr}")
+            return False
+    except subprocess.TimeoutExpired:
+        print("Scan timed out")
+        return False
+
+def parse_nmap_xml(xml_file):
+    """Parse Nmap XML output to JSON"""
+    try:
+        tree = ET.parse(xml_file)
+        root = tree.getroot()
+        
+        results = {
+            'scan_time': datetime.now().isoformat(),
+            'hosts': []
+        }
+        
+        for host in root.findall('host'):
+            host_data = {
+                'ip': '',
+                'status': '',
+                'ports': [],
+                'os': '',
+                'vulnerabilities': []
+            }
+            
+            # Get IP address
+            address = host.find('address')
+            if address is not None:
+                host_data['ip'] = address.get('addr')
+            
+            # Get host status
+            status = host.find('status')
+            if status is not None:
+                host_data['status'] = status.get('state')
+            
+            # Get open ports
+            ports = host.find('ports')
+            if ports is not None:
+                for port in ports.findall('port'):
+                    port_data = {
+                        'port': port.get('portid'),
+                        'protocol': port.get('protocol'),
+                        'state': '',
+                        'service': ''
+                    }
+                    
+                    state = port.find('state')
+                    if state is not None:
+                        port_data['state'] = state.get('state')
+                    
+                    service = port.find('service')
+                    if service is not None:
+                        port_data['service'] = service.get('name', '')
+                    
+                    host_data['ports'].append(port_data)
+            
+            # Get OS information
+            os_elem = host.find('os')
+            if os_elem is not None:
+                osmatch = os_elem.find('osmatch')
+                if osmatch is not None:
+                    host_data['os'] = osmatch.get('name', '')
+            
+            # Get vulnerability script results
+            hostscript = host.find('hostscript')
+            if hostscript is not None:
+                for script in hostscript.findall('script'):
+                    if 'vuln' in script.get('id', ''):
+                        host_data['vulnerabilities'].append({
+                            'script': script.get('id'),
+                            'output': script.get('output', '')
+                        })
+            
+            results['hosts'].append(host_data)
+        
+        return results
+    except Exception as e:
+        print(f"Error parsing XML: {e}")
+        return None
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python3 nmap_scanner.py <target>")
+        sys.exit(1)
+    
+    target = sys.argv[1]
+    xml_output = f"scans/scan_{target.replace('/', '_').replace('.', '_')}.xml"
+    json_output = f"data/scan_{target.replace('/', '_').replace('.', '_')}.json"
+    
+    # Run Nmap scan
+    if run_nmap_scan(target, xml_output):
+        # Parse results
+        parsed_data = parse_nmap_xml(xml_output)
+        if parsed_data:
+            with open(json_output, 'w') as f:
+                json.dump(parsed_data, f, indent=2)
+            print(f"Results saved to {json_output}")
+        else:
+            print("Failed to parse scan results")
+    else:
+        print("Scan failed")
+EOF
+
+chmod +x scripts/nmap_scanner.py
+Subtask 2.2: Execute Test Scan
+# Run test scan on localhost
+python3 scripts/nmap_scanner.py 127.0.0.1
+
+# Verify output files
+ls -la scans/ data/
+Task 3: Parse Nmap Results using N8N
+Subtask 3.1: Create N8N Workflow Configuration
+# Create N8N workflow JSON
+cat > workflows/nmap_parser_workflow.json << 'EOF'
+{
+  "name": "Nmap Results Parser",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "/webhook/nmap-scan",
+        "httpMethod": "POST"
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "functionCode": "const scanData = items[0].json;\nconst vulnerabilities = [];\n\nfor (const host of scanData.hosts) {\n  for (const vuln of host.vulnerabilities) {\n    vulnerabilities.push({\n      ip: host.ip,\n      vulnerability: vuln.script,\n      details: vuln.output,\n      severity: vuln.output.includes('HIGH') ? 'HIGH' : \n                vuln.output.includes('MEDIUM') ? 'MEDIUM' : 'LOW'\n    });\n  }\n}\n\nreturn vulnerabilities.map(v => ({ json: v }));"
+      },
+      "name": "Parse Vulnerabilities",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "filePath": "/tmp/vulnerabilities.json",
+        "jsonData": "={{ JSON.stringify($json) }}"
+      },
+      "name": "Save Results",
+      "type": "n8n-nodes-base.writeFile",
+      "typeVersion": 1,
+      "position": [680, 300]
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Parse Vulnerabilities",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Vulnerabilities": {
+      "main": [
+        [
+          {
+            "node": "Save Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
+EOF
+Subtask 3.2: Test N8N Workflow
+# Send test data to N8N webhook
+curl -X POST http://localhost:5678/webhook/nmap-scan \
+  -H "Content-Type: application/json" \
+  -d @data/scan_127_0_0_1.json
+
+# Verify processed results
+cat /tmp/vulnerabilities.json | jq '.' 2>/dev/null || cat /tmp/vulnerabilities.json
+Task 4: Implement RAG for Enhanced Vulnerability Discovery
+Subtask 4.1: Create RAG Knowledge Base
+# Create vulnerability knowledge base
+cat > data/vulnerability_kb.json << 'EOF'
+{
+  "vulnerabilities": [
+    {
+      "cve": "CVE-2021-44228",
+      "name": "Log4Shell",
+      "description": "Remote code execution in Apache Log4j",
+      "severity": "CRITICAL",
+      "ports": ["8080", "9200", "8443"],
+      "indicators": ["log4j", "apache", "java"],
+      "remediation": "Update Log4j to version 2.17.0 or later"
+    },
+    {
+      "cve": "CVE-2017-0144",
+      "name": "EternalBlue",
+      "description": "SMB vulnerability exploited by WannaCry",
+      "severity": "HIGH",
+      "ports": ["445", "139"],
+      "indicators": ["smb", "windows", "ms17-010"],
+      "remediation": "Apply Microsoft security update MS17-010"
+    },
+    {
+      "cve": "CVE-2014-6271",
+      "name": "Shellshock",
+      "description": "Bash command injection vulnerability",
+      "severity": "HIGH",
+      "ports": ["80", "443", "22"],
+      "indicators": ["bash", "cgi", "apache"],
+      "remediation": "Update Bash to patched version"
+    }
+  ]
+}
+EOF
+Subtask 4.2: Create RAG Analysis Engine
+# Create RAG vulnerability analyzer
+cat > scripts/rag_analyzer.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import re
+from datetime import datetime
+
+class RAGVulnerabilityAnalyzer:
+    def __init__(self, kb_file):
+        with open(kb_file, 'r') as f:
+            self.knowledge_base = json.load(f)
+    
+    def analyze_scan_results(self, scan_file):
+        """Analyze scan results using RAG approach"""
+        with open(scan_file, 'r') as f:
+            scan_data = json.load(f)
+        
+        enhanced_results = {
+            'analysis_time': datetime.now().isoformat(),
+            'total_hosts': len(scan_data['hosts']),
+            'enhanced_vulnerabilities': [],
+            'recommendations': []
+        }
+        
+        for host in scan_data['hosts']:
+            host_vulns = self._analyze_host(host)
+            enhanced_results['enhanced_vulnerabilities'].extend(host_vulns)
+        
+        # Generate recommendations
+        enhanced_results['recommendations'] = self._generate_recommendations(
+            enhanced_results['enhanced_vulnerabilities']
+        )
+        
+        return enhanced_results
+    
+    def _analyze_host(self, host):
+        """Analyze individual host for vulnerabilities"""
+        vulnerabilities = []
+        
+        # Check open ports against known vulnerabilities
+        for port in host['ports']:
+            if port['state'] == 'open':
+                port_vulns = self._check_port_vulnerabilities(
+                    host['ip'], port, host.get('os', '')
+                )
+                vulnerabilities.extend(port_vulns)
+        
+        # Enhance existing vulnerability detections
+        for vuln in host.get('vulnerabilities', []):
+            enhanced_vuln = self._enhance_vulnerability(host['ip'], vuln)
+            vulnerabilities.append(enhanced_vuln)
+        
+        return vulnerabilities
+    
+    def _check_port_vulnerabilities(self, ip, port, os_info):
+        """Check port against vulnerability knowledge base"""
+        vulnerabilities = []
+        
+        for kb_vuln in self.knowledge_base['vulnerabilities']:
+            if port['port'] in kb_vuln['ports']:
+                # Check for service indicators
+                service_match = any(
+                    indicator.lower() in port.get('service', '').lower() or
+                    indicator.lower() in os_info.lower()
+                    for indicator in kb_vuln['indicators']
+                )
+                
+                if service_match:
+                    vulnerabilities.append({
+                        'ip': ip,
+                        'port': port['port'],
+                        'cve': kb_vuln['cve'],
+                        'name': kb_vuln['name'],
+                        'severity': kb_vuln['severity'],
+                        'description': kb_vuln['description'],
+                        'remediation': kb_vuln['remediation'],
+                        'confidence': 'HIGH' if service_match else 'MEDIUM'
+                    })
+        
+        return vulnerabilities
+    
+    def _enhance_vulnerability(self, ip, vuln):
+        """Enhance detected vulnerability with KB information"""
+        enhanced = {
+            'ip': ip,
+            'script': vuln['script'],
+            'output': vuln['output'],
+            'severity': 'UNKNOWN',
+            'cve': 'N/A',
+            'remediation': 'Manual investigation required'
+        }
+        
+        # Try to match against knowledge base
+        for kb_vuln in self.knowledge_base['vulnerabilities']:
+            if any(indicator.lower() in vuln['output'].lower() 
+                   for indicator in kb_vuln['indicators']):
+                enhanced.update({
+                    'cve': kb_vuln['cve'],
+                    'name': kb_vuln['name'],
+                    'severity': kb_vuln['severity'],
+                    'remediation': kb_vuln['remediation']
+                })
+                break
+        
+        return enhanced
+    
+    def _generate_recommendations(self, vulnerabilities):
+        """Generate prioritized recommendations"""
+        recommendations = []
+        
+        # Group by severity
+        critical = [v for v in vulnerabilities if v.get('severity') == 'CRITICAL']
+        high = [v for v in vulnerabilities if v.get('severity') == 'HIGH']
+        
+        if critical:
+            recommendations.append({
+                'priority': 'IMMEDIATE',
+                'action': f'Address {len(critical)} critical vulnerabilities immediately',
+                'details': [v.get('remediation', 'Unknown') for v in critical[:3]]
+            })
+        
+        if high:
+            recommendations.append({
+                'priority': 'HIGH',
+                'action': f'Address {len(high)} high-severity vulnerabilities',
+                'details': [v.get('remediation', 'Unknown') for v in high[:3]]
+            })
+        
+        return recommendations
+
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) != 2:
+        print("Usage: python3 rag_analyzer.py <scan_json_file>")
+        sys.exit(1)
+    
+    analyzer = RAGVulnerabilityAnalyzer('data/vulnerability_kb.json')
+    results = analyzer.analyze_scan_results(sys.argv[1])
+    
+    output_file = f"data/rag_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+    with open(output_file, 'w') as f:
+        json.dump(results, f, indent=2)
+    
+    print(f"RAG analysis completed. Results saved to {output_file}")
+    print(f"Found {len(results['enhanced_vulnerabilities'])} enhanced vulnerabilities")
+    print(f"Generated {len(results['recommendations'])} recommendations")
+EOF
+
+chmod +x scripts/rag_analyzer.py
+Subtask 4.3: Execute RAG Analysis
+# Run RAG analysis on scan results
+python3 scripts/rag_analyzer.py data/scan_127_0_0_1.json
+
+# View enhanced results
+ls -la data/rag_analysis_*.json
+cat data/rag_analysis_*.json | jq '.recommendations' 2>/dev/null || grep -A 10 "recommendations" data/rag_analysis_*.json
+Task 5: Create Integrated Automation Pipeline
+Subtask 5.1: Build Complete Automation Script
+# Create integrated pipeline
+cat > scripts/automated_pipeline.py << 'EOF'
+#!/usr/bin/env python3
+import subprocess
+import json
+import time
+import sys
+from datetime import datetime
+
+def run_complete_pipeline(target):
+    """Execute complete automated pipeline"""
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    
+    print(f"[{datetime.now()}] Starting automated pipeline for {target}")
+    
+    # Step 1: Run Nmap scan
+    print("Step 1: Running Nmap scan...")
+    scan_result = subprocess.run([
+        'python3', 'scripts/nmap_scanner.py', target
+    ], capture_output=True, text=True)
+    
+    if scan_result.returncode != 0:
+        print(f"Nmap scan failed: {scan_result.stderr}")
+        return False
+    
+    # Step 2: Find the generated JSON file
+    target_safe = target.replace('/', '_').replace('.', '_')
+    json_file = f"data/scan_{target_safe}.json"
+    
+    # Step 3: Run RAG analysis
+    print("Step 2: Running RAG analysis...")
+    rag_result = subprocess.run([
+        'python3', 'scripts/rag_analyzer.py', json_file
+    ], capture_output=True, text=True)
+    
+    if rag_result.returncode != 0:
+        print(f"RAG analysis failed: {rag_result.stderr}")
+        return False
+    
+    # Step 4: Send to N8N (if running)
+    print("Step 3: Sending to N8N workflow...")
+    try:
+        with open(json_file, 'r') as f:
+            scan_data = json.load(f)
+        
+        n8n_result = subprocess.run([
+            'curl', '-X', 'POST', 'http://localhost:5678/webhook/nmap-scan',
+            '-H', 'Content-Type: application/json',
+            '-d', json.dumps(scan_data)
+        ], capture_output=True, text=True, timeout=10)
+        
+        if n8n_result.returncode == 0:
+            print("Successfully sent data to N8N")
+        else:
+            print("N8N webhook not available (this is optional)")
+    
+    except Exception as e:
+        print(f"N8N integration skipped: {e}")
+    
+    print(f"[{datetime.now()}] Pipeline completed successfully!")
+    return True
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("Usage: python3 automated_pipeline.py <target>")
+        sys.exit(1)
+    
+    target = sys.argv[1]
+    success = run_complete_pipeline(target)
+    sys.exit(0 if success else 1)
+EOF
+
+chmod +x scripts/automated_pipeline.py
+Subtask 5.2: Test Complete Pipeline
+# Run complete automated pipeline
+python3 scripts/automated_pipeline.py 127.0.0.1
+
+# Verify all outputs
+echo "=== Scan Results ==="
+ls -la data/scan_*.json
+
+echo "=== RAG Analysis ==="
+ls -la data/rag_analysis_*.json
+
+echo "=== N8N Processing ==="
+ls -la /tmp/vulnerabilities.json 2>/dev/null || echo "N8N output not found (optional)"
+Task 6: Verification and Testing
+Subtask 6.1: Create Verification Script
+# Create verification script
+cat > scripts/verify_lab.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import json
+import subprocess
+
+def verify_installation():
+    """Verify all tools are installed"""
+    tools = ['nmap', 'python3', 'curl', 'docker']
+    missing = []
+    
+    for tool in tools:
+        result = subprocess.run(['which', tool], capture_output=True)
+        if result.returncode != 0:
+            missing.append(tool)
+    
+    if missing:
+        print(f"Missing tools: {', '.join(missing)}")
+        return False
+    
+    print("✓ All required tools installed")
+    return True
+
+def verify_outputs():
+    """Verify expected output files exist"""
+    expected_files = [
+        'data/scan_127_0_0_1.json',
+        'data/vulnerability_kb.json'
+    ]
+    
+    missing = []
+    for file in expected_files:
+        if not os.path.exists(file):
+            missing.append(file)
+    
+    if missing:
+        print(f"Missing output files: {', '.join(missing)}")
+        return False
+    
+    print("✓ All expected output files present")
+    return True
+
+def verify_data_quality():
+    """Verify data quality in output files"""
+    try:
+        with open('data/scan_127_0_0_1.json', 'r') as f:
+            scan_data = json.load(f)
+        
+        if 'hosts' not in scan_data or len(scan_data['hosts']) == 0:
+            print("✗ Scan data appears incomplete")
+            return False
+        
+        print(f"✓ Scan data contains {len(scan_data['hosts'])} hosts")
+        
+        # Check for RAG analysis files
+        rag_files = [f for f in os.listdir('data/') if f.startswith('rag_analysis_')]
+        if rag_files:
+            print(f"✓ RAG analysis completed ({len(rag_files)} files)")
+        else:
+            print("✗ No RAG analysis files found")
+            return False
+        
+        return True
+    
+    except Exception as e:
+        print(f"✗ Error verifying data quality: {e}")
+        return False
+
+if __name__ == "__main__":
+    print("=== Lab Verification ===")
+    
+    checks = [
+        verify_installation(),
+        verify_outputs(),
+        verify_data_quality()
+    ]
+    
+    if all(checks):
+        print("\n🎉 Lab completed successfully!")
+        print("All components are working correctly.")
+    else:
+        print("\n❌ Lab verification failed.")
+        print("Please review the steps and try again.")
+EOF
+
+chmod +x scripts/verify_lab.py
+python3 scripts/verify_lab.py
+Subtask 6.2: Generate Final Report
+# Create final summary report
+cat > lab_summary.md << 'EOF'
+# Lab 2 Summary: Automated Nmap Parsing with N8N + RAG
+
+## Completed Tasks
+
+1. **Environment Setup**: Installed Nmap, N8N, Python dependencies
+2. **Nmap Automation**: Created automated scanning with XML/JSON parsing
+3. **N8N Integration**: Built workflow for processing scan results
+4. **RAG Implementation**: Enhanced vulnerability discovery with knowledge base
+5. **Pipeline Integration**: Combined all components into automated workflow
+
+## Generated Files
+
+- `scripts/nmap_scanner.py`: Automated Nmap scanning and parsing
+- `scripts/rag_analyzer.py`: RAG-based vulnerability analysis
+- `scripts/automated_pipeline.py`: Complete automation pipeline
+- `data/vulnerability_kb.json`: Vulnerability knowledge base
+- `workflows/nmap_parser_workflow.json`: N8N workflow configuration
+
+## Key Achievements
+
+- Automated network scanning and vulnerability detection
+- Enhanced vulnerability analysis using RAG approach
+- Integrated workflow automation with N8N
+- Created reusable, scalable security assessment pipeline
+
+## Next Steps
+
+- Expand vulnerability knowledge base
+- Add more sophisticated RAG models
+- Integrate with SIEM systems
+- Implement automated remediation workflows
+EOF
+
+echo "Lab Summary created: lab_summary.md"
+cat lab_summary.md
+Conclusion
+You have successfully completed Lab 2: Automated Nmap Parsing with N8N + RAG. This lab demonstrated how to create a comprehensive automated security assessment pipeline that combines traditional network scanning with modern AI-enhanced analysis.
+
+Key accomplishments:
+
+Built an automated Nmap scanning system with structured output parsing
+Implemented N8N workflow automation for processing security data
+Created a RAG-based vulnerability analysis system that enhances detection capabilities
+Integrated all components into a cohesive automated pipeline
+This automation approach significantly improves the efficiency and accuracy of network security assessments, making it valuable for security professionals, penetration testers, and network administrators. The RAG enhancement provides contextual vulnerability analysis that goes beyond basic scanning, offering actionable insights and prioritized remediation guidance.
+
+The skills learned in this lab are directly applicable to enterprise security operations, automated threat detection, and continuous security monitoring implementations.
