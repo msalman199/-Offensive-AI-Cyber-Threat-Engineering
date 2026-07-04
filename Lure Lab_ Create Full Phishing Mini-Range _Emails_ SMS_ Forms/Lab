@@ -1,0 +1,423 @@
+Phishing Simulation Mini-Range
+Objectives
+By completing this lab, you will:
+
+Set up a controlled phishing simulation environment on Linux
+Create realistic phishing email and SMS templates
+Build credential capture forms with logging mechanisms
+Understand technical components of social engineering attacks
+Practice ethical security testing in an isolated environment
+Prerequisites
+Basic Linux command-line skills
+HTML/CSS fundamentals
+Understanding of HTTP and web servers
+Python basics
+Lab Environment
+Al Nafi provides a Linux-based cloud machine. Click Start Lab to access your system. All tools will be installed during the lab. This is an isolated environment for educational purposes only.
+
+ETHICAL WARNING: This lab teaches defensive security. Never use these techniques against real targets without explicit written authorization.
+
+Task 1: Infrastructure Setup
+Step 1.1: Install Core Components
+Update system and install required packages:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y apache2 php mysql-server python3 python3-pip git nano
+sudo systemctl start apache2 && sudo systemctl enable apache2
+Install Python dependencies:
+
+pip3 install flask requests
+Step 1.2: Configure Directory Structure
+Set up working directories:
+
+sudo chown -R $USER:$USER /var/www/html
+cd /var/www/html
+sudo rm -f index.html
+mkdir -p phishing/{templates,forms,logs,assets}
+cd phishing
+Create log directory with proper permissions:
+
+mkdir -p logs
+chmod 755 logs
+Task 2: Email Template Creation
+Step 2.1: Build Email Template Generator
+Create the template generator script:
+
+nano email_generator.py
+Add starter code (students complete the implementation):
+
+#!/usr/bin/env python3
+import os
+import datetime
+
+class EmailTemplateGenerator:
+    def __init__(self, output_dir="templates"):
+        """
+        Initialize email template generator.
+        
+        Args:
+            output_dir: Directory to save templates
+        """
+        self.output_dir = output_dir
+        os.makedirs(output_dir, exist_ok=True)
+    
+    def generate_bank_alert(self, account_last4="1234"):
+        """
+        Generate a bank security alert email template.
+        
+        Args:
+            account_last4: Last 4 digits of account number
+        
+        Returns:
+            HTML string of the email template
+        """
+        # TODO: Create HTML structure with header, body, footer
+        # TODO: Include urgent security messaging
+        # TODO: Add button linking to credential form
+        # TODO: Use inline CSS for styling
+        # TODO: Save to file in output_dir
+        pass
+    
+    def generate_social_media_alert(self):
+        """
+        Generate a social media account suspension template.
+        
+        Returns:
+            HTML string of the email template
+        """
+        # TODO: Create social media branded template
+        # TODO: Include suspension warning message
+        # TODO: Add verification link
+        # TODO: Save to file in output_dir
+        pass
+    
+    def generate_shipping_notification(self, tracking_number):
+        """
+        Generate a package delivery notification template.
+        
+        Args:
+            tracking_number: Fake tracking number
+        
+        Returns:
+            HTML string of the email template
+        """
+        # TODO: Create delivery service branded template
+        # TODO: Include tracking information
+        # TODO: Add link to update delivery details
+        # TODO: Save to file in output_dir
+        pass
+
+if __name__ == "__main__":
+    generator = EmailTemplateGenerator()
+    # TODO: Call generation methods
+    # TODO: Print success messages
+Make executable and test:
+
+chmod +x email_generator.py
+python3 email_generator.py
+Step 2.2: Create Email Logging System
+Create email sender with logging:
+
+nano email_logger.py
+Starter code for students:
+
+#!/usr/bin/env python3
+import datetime
+import json
+import os
+
+class PhishingEmailLogger:
+    def __init__(self, log_dir="logs"):
+        """
+        Initialize email logging system.
+        
+        Args:
+            log_dir: Directory for log files
+        """
+        self.log_dir = log_dir
+        os.makedirs(log_dir, exist_ok=True)
+    
+    def log_email_sent(self, recipient, subject, template_name):
+        """
+        Log details of a simulated phishing email.
+        
+        Args:
+            recipient: Target email address
+            subject: Email subject line
+            template_name: Name of template used
+        """
+        # TODO: Create log entry dictionary with timestamp
+        # TODO: Append to JSON log file
+        # TODO: Also write to text log for easy reading
+        pass
+    
+    def generate_report(self):
+        """
+        Generate summary report of all logged emails.
+        
+        Returns:
+            Dictionary with statistics
+        """
+        # TODO: Read log file
+        # TODO: Count emails by template type
+        # TODO: Return summary statistics
+        pass
+
+if __name__ == "__main__":
+    logger = PhishingEmailLogger()
+    # TODO: Test logging functionality
+Task 3: SMS Template Development
+Step 3.1: Create SMS Content Generator
+Build SMS template system:
+
+nano sms_generator.py
+Starter template:
+
+#!/usr/bin/env python3
+import random
+import os
+
+class SMSTemplateGenerator:
+    def __init__(self, output_dir="templates"):
+        """
+        Initialize SMS template generator.
+        """
+        self.output_dir = output_dir
+        self.base_url = "http://localhost/phishing/forms"
+    
+    def generate_bank_sms(self):
+        """
+        Generate bank alert SMS messages.
+        
+        Returns:
+            List of SMS message strings
+        """
+        # TODO: Create 3-5 urgent bank alert messages
+        # TODO: Include verification codes (random 6 digits)
+        # TODO: Add shortened URLs to forms
+        # TODO: Save to text file
+        pass
+    
+    def generate_delivery_sms(self):
+        """
+        Generate package delivery SMS messages.
+        
+        Returns:
+            List of SMS message strings
+        """
+        # TODO: Create delivery failure messages
+        # TODO: Include fake tracking numbers
+        # TODO: Add links to update delivery info
+        # TODO: Save to text file
+        pass
+    
+    def generate_verification_sms(self):
+        """
+        Generate account verification SMS messages.
+        
+        Returns:
+            List of SMS message strings
+        """
+        # TODO: Create verification code messages
+        # TODO: Add urgency elements
+        # TODO: Include verification links
+        # TODO: Save to text file
+        pass
+
+if __name__ == "__main__":
+    generator = SMSTemplateGenerator()
+    # TODO: Generate all SMS types
+    # TODO: Print summary
+Task 4: Credential Capture Forms
+Step 4.1: Build Bank Login Form
+Create credential capture form:
+
+nano forms/bank_login.html
+HTML starter template:
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SecureBank - Account Verification</title>
+    <style>
+        /* TODO: Add professional banking styles */
+        /* TODO: Include blue/white color scheme */
+        /* TODO: Make responsive for mobile */
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <!-- TODO: Add bank logo and branding -->
+        </div>
+        <div class="content">
+            <h2>Account Verification Required</h2>
+            <p>Please verify your identity to continue.</p>
+            <form id="loginForm" action="capture.php" method="POST">
+                <!-- TODO: Add username field -->
+                <!-- TODO: Add password field -->
+                <!-- TODO: Add account number field -->
+                <!-- TODO: Add submit button -->
+            </form>
+        </div>
+        <div class="footer">
+            <!-- TODO: Add disclaimer and contact info -->
+        </div>
+    </div>
+    <script>
+        // TODO: Add form validation
+        // TODO: Add loading animation on submit
+    </script>
+</body>
+</html>
+Step 4.2: Create Credential Capture Backend
+Build PHP capture script:
+
+nano forms/capture.php
+PHP starter code:
+
+<?php
+/**
+ * Credential capture and logging script
+ * 
+ * Captures form submissions and logs to file
+ */
+
+// TODO: Set up error handling
+// TODO: Validate input data exists
+
+function logCredentials($data) {
+    /**
+     * Log captured credentials to file
+     * 
+     * @param array $data Form data to log
+     */
+    // TODO: Create log entry with timestamp
+    // TODO: Sanitize input data
+    // TODO: Append to log file in JSON format
+    // TODO: Also log IP address and user agent
+}
+
+function redirectUser() {
+    /**
+     * Redirect user to legitimate site after capture
+     */
+    // TODO: Add delay to appear authentic
+    // TODO: Redirect to real bank website
+}
+
+// TODO: Process POST data
+// TODO: Call logging function
+// TODO: Redirect user
+
+?>
+Step 4.3: Build Social Media Login Form
+Create social media capture form:
+
+nano forms/social_login.html
+Students implement similar structure to bank form with social media branding.
+
+Step 4.4: Create Universal Capture Logger
+Build comprehensive logging system:
+
+nano forms/log_viewer.php
+PHP starter for log viewing:
+
+<?php
+/**
+ * View captured credentials (admin interface)
+ */
+
+// TODO: Add authentication check
+// TODO: Read log files
+// TODO: Parse JSON entries
+// TODO: Display in HTML table
+// TODO: Add filtering by date/type
+// TODO: Include export functionality
+
+?>
+Task 5: Testing and Validation
+Step 5.1: Test Email Templates
+Verify templates render correctly:
+
+# Open templates in browser
+firefox templates/bank_alert.html
+firefox templates/social_suspension.html
+Check for:
+
+Proper HTML rendering
+Working links to forms
+Professional appearance
+Mobile responsiveness
+Step 5.2: Test Credential Capture
+Test form submission and logging:
+
+# Start Apache if not running
+sudo systemctl status apache2
+
+# Navigate to forms
+firefox http://localhost/phishing/forms/bank_login.html
+Submit test credentials and verify:
+
+Data captured in logs
+Proper redirection
+Timestamp accuracy
+IP logging functionality
+Step 5.3: Validate SMS Templates
+Review SMS content:
+
+cat templates/bank_sms.txt
+cat templates/delivery_sms.txt
+Verify:
+
+Message length (under 160 characters)
+URL shortening needed
+Urgency without obvious red flags
+Proper formatting
+Expected Outcomes
+After completing this lab, you should have:
+
+Functional phishing email templates (3+ types)
+SMS message templates (3+ categories)
+Working credential capture forms (2+ forms)
+Logging system for captured data
+Complete mini-range on single machine
+Test your setup by:
+
+Opening email templates in browser
+Submitting test credentials through forms
+Verifying logs contain captured data
+Reviewing SMS templates for effectiveness
+Troubleshooting Tips
+Apache not starting:
+
+sudo systemctl status apache2
+sudo journalctl -xe
+# Check port 80 not in use
+sudo netstat -tulpn | grep :80
+Forms not capturing data:
+
+Verify PHP is installed: php -v
+Check file permissions: ls -la forms/
+Review Apache error log: sudo tail -f /var/log/apache2/error.log
+Templates not displaying correctly:
+
+Validate HTML syntax
+Check file paths in links
+Verify Apache document root configuration
+Conclusion
+This lab demonstrated how phishing attacks are technically constructed. You created email templates, SMS messages, and credential capture forms in a controlled environment. Understanding these techniques is essential for:
+
+Recognizing phishing attempts
+Training users on security awareness
+Testing organizational defenses
+Implementing proper email filtering
+Remember: These techniques are for authorized security testing only. Unauthorized use is illegal and unethical. Always obtain written permission before conducting security assessments.
+
+Next Steps: Practice identifying phishing indicators, implement email authentication (SPF/DKIM/DMARC), and develop user awareness training programs.
+
+Cleanup: Remove the phishing directory when finished:
+
+sudo rm -rf /var/www/html/phishing
