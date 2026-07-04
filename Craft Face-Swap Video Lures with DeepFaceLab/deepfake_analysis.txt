@@ -1,0 +1,23 @@
+Deepfake Video Analysis Report
+=============================
+
+Source Video: data_src.mp4
+Target Video: data_dst.mp4
+Model Used: SAEHD
+Training Iterations: [Record actual number]
+
+Quality Assessment:
+- Facial alignment: [Good/Fair/Poor]
+- Lighting consistency: [Good/Fair/Poor]
+- Motion artifacts: [Present/Absent]
+
+Potential Detection Methods:
+- Temporal inconsistencies
+- Lighting anomalies
+- Facial landmark irregularities
+- Compression artifacts
+
+Ethical Considerations:
+- Consent not obtained (demonstration only)
+- Potential for misuse in social engineering
+- Legal implications of unauthorized deepfakes
