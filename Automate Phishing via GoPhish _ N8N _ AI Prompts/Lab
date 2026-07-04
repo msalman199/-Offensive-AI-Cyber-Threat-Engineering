@@ -1,0 +1,387 @@
+Automate Phishing via GoPhish + N8N + AI Prompts
+Learning Objectives
+By completing this lab, you will:
+
+Set up and configure GoPhish for automated phishing campaigns
+Integrate N8N workflow automation with GoPhish
+Generate AI-powered phishing content using local language models
+Create end-to-end automated phishing simulation workflows
+Understand the technical components of modern phishing attack vectors
+Prerequisites
+Basic Linux command line knowledge
+Understanding of HTTP/HTTPS protocols
+Familiarity with JSON data structures
+Basic networking concepts (ports, IP addresses)
+Important: This lab is for educational and authorized security testing purposes only
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Click Start Lab to access your dedicated environment. The machine comes with a bare metal Linux installation, so you'll install all required tools during the lab exercises.
+
+Task 1: Set up GoPhish for Phishing Campaigns
+Subtask 1.1: Install GoPhish
+Update the system and install dependencies:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install wget unzip git curl -y
+Download and install GoPhish:
+
+cd /opt
+sudo wget https://github.com/gophish/gophish/releases/download/v0.12.1/gophish-v0.12.1-linux-64bit.zip
+sudo unzip gophish-v0.12.1-linux-64bit.zip
+sudo chmod +x gophish
+Subtask 1.2: Configure GoPhish
+Create configuration directory and modify settings:
+
+sudo mkdir -p /opt/gophish/static/endpoint
+sudo chown -R $USER:$USER /opt/gophish
+cd /opt/gophish
+Edit the configuration file:
+
+nano config.json
+Update the configuration:
+
+{
+  "admin_server": {
+    "listen_url": "0.0.0.0:3333",
+    "use_tls": false,
+    "cert_path": "gophish_admin.crt",
+    "key_path": "gophish_admin.key"
+  },
+  "phish_server": {
+    "listen_url": "0.0.0.0:8080",
+    "use_tls": false,
+    "cert_path": "example.crt",
+    "key_path": "example.key"
+  },
+  "db_name": "sqlite3",
+  "db_path": "gophish.db",
+  "migrations_prefix": "db/db_",
+  "contact_address": "",
+  "logging": {
+    "filename": "",
+    "level": ""
+  }
+}
+Subtask 1.3: Start GoPhish Service
+Create a systemd service:
+
+sudo nano /etc/systemd/system/gophish.service
+Add service configuration:
+
+[Unit]
+Description=GoPhish Phishing Framework
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/gophish
+ExecStart=/opt/gophish/gophish
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+Enable and start the service:
+
+sudo systemctl daemon-reload
+sudo systemctl enable gophish
+sudo systemctl start gophish
+Verify GoPhish is running:
+
+sudo systemctl status gophish
+netstat -tlnp | grep :3333
+Task 2: Integrate N8N for Automation
+Subtask 2.1: Install Node.js and N8N
+Install Node.js:
+
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+Install N8N globally:
+
+sudo npm install -g n8n
+Subtask 2.2: Configure N8N
+Create N8N configuration directory:
+
+mkdir -p ~/.n8n
+cd ~/.n8n
+Create N8N configuration file:
+
+nano config.json
+Add configuration:
+
+{
+  "host": "0.0.0.0",
+  "port": 5678,
+  "protocol": "http"
+}
+Subtask 2.3: Start N8N Service
+Create N8N systemd service:
+
+sudo nano /etc/systemd/system/n8n.service
+Add service configuration:
+
+[Unit]
+Description=N8N Workflow Automation
+After=network.target
+
+[Service]
+Type=simple
+User=$USER
+Environment=N8N_HOST=0.0.0.0
+Environment=N8N_PORT=5678
+Environment=N8N_PROTOCOL=http
+ExecStart=/usr/bin/n8n start
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+Start N8N:
+
+sudo systemctl daemon-reload
+sudo systemctl enable n8n
+sudo systemctl start n8n
+Verify N8N is running:
+
+sudo systemctl status n8n
+netstat -tlnp | grep :5678
+Task 3: Use AI to Generate Phishing Prompts
+Subtask 3.1: Install Local AI Model (Ollama)
+Install Ollama for local AI processing:
+
+curl -fsSL https://ollama.ai/install.sh | sh
+Start Ollama service:
+
+sudo systemctl start ollama
+sudo systemctl enable ollama
+Pull a language model:
+
+ollama pull llama2:7b
+Subtask 3.2: Create AI Prompt Generation Script
+Create a Python script for AI-powered content generation:
+
+sudo apt install python3-pip -y
+pip3 install requests json
+Create the AI prompt script:
+
+nano ai_phishing_generator.py
+Add the script content:
+
+#!/usr/bin/env python3
+import requests
+import json
+import sys
+
+def generate_phishing_content(target_company, campaign_type):
+    prompt = f"""
+    Create a professional phishing email for security awareness training targeting {target_company}.
+    Campaign type: {campaign_type}
+    
+    Requirements:
+    - Professional tone
+    - Believable scenario
+    - Clear call-to-action
+    - Include subject line
+    - For educational purposes only
+    
+    Format as JSON with 'subject' and 'body' fields.
+    """
+    
+    payload = {
+        "model": "llama2:7b",
+        "prompt": prompt,
+        "stream": False
+    }
+    
+    try:
+        response = requests.post("http://localhost:11434/api/generate", json=payload)
+        result = response.json()
+        return result['response']
+    except Exception as e:
+        return f"Error generating content: {str(e)}"
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python3 ai_phishing_generator.py <company> <campaign_type>")
+        sys.exit(1)
+    
+    company = sys.argv[1]
+    campaign_type = sys.argv[2]
+    
+    content = generate_phishing_content(company, campaign_type)
+    print(content)
+Make the script executable:
+
+chmod +x ai_phishing_generator.py
+Subtask 3.3: Create N8N Workflow Integration
+Access N8N web interface at http://localhost:5678 and create a new workflow with these nodes:
+
+HTTP Request Node - Configure to call GoPhish API
+Code Node - Add Python script execution
+Webhook Node - Trigger automation
+Create workflow automation script:
+
+nano n8n_gophish_integration.py
+Add integration script:
+
+#!/usr/bin/env python3
+import requests
+import json
+import subprocess
+
+class GoPhishN8NIntegration:
+    def __init__(self):
+        self.gophish_url = "http://localhost:3333"
+        self.n8n_url = "http://localhost:5678"
+        self.api_key = self.get_gophish_api_key()
+    
+    def get_gophish_api_key(self):
+        # Extract API key from GoPhish logs
+        try:
+            with open('/opt/gophish/gophish.log', 'r') as f:
+                for line in f:
+                    if 'Please login with the username admin and the password' in line:
+                        return line.split()[-1]
+        except:
+            return "default_api_key"
+    
+    def create_campaign(self, name, template_content):
+        headers = {
+            'Authorization': f'Bearer {self.api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        # Create email template
+        template_data = {
+            "name": f"{name}_template",
+            "subject": template_content.get('subject', 'Important Update'),
+            "text": template_content.get('body', 'Default body'),
+            "html": f"<html><body>{template_content.get('body', 'Default body')}</body></html>"
+        }
+        
+        response = requests.post(
+            f"{self.gophish_url}/api/templates/",
+            headers=headers,
+            json=template_data
+        )
+        
+        return response.json()
+    
+    def trigger_n8n_workflow(self, webhook_url, data):
+        return requests.post(webhook_url, json=data)
+
+if __name__ == "__main__":
+    integration = GoPhishN8NIntegration()
+    
+    # Generate AI content
+    ai_content = subprocess.check_output([
+        'python3', 'ai_phishing_generator.py', 
+        'TechCorp', 'credential_harvesting'
+    ]).decode('utf-8')
+    
+    print("AI Generated Content:", ai_content)
+    
+    # Create campaign
+    template_data = {
+        'subject': 'Urgent: Account Verification Required',
+        'body': ai_content
+    }
+    
+    result = integration.create_campaign("automated_test", template_data)
+    print("Campaign created:", result)
+Task 4: Complete Integration Testing
+Subtask 4.1: Create Test Campaign
+Create a complete test script:
+
+nano complete_test.py
+Add test automation:
+
+#!/usr/bin/env python3
+import requests
+import json
+import time
+import subprocess
+
+def run_complete_test():
+    print("Starting complete phishing automation test...")
+    
+    # Step 1: Generate AI content
+    print("1. Generating AI content...")
+    ai_content = subprocess.check_output([
+        'python3', 'ai_phishing_generator.py', 
+        'TestCompany', 'awareness_training'
+    ]).decode('utf-8')
+    
+    # Step 2: Create GoPhish campaign
+    print("2. Creating GoPhish campaign...")
+    gophish_api = "http://localhost:3333/api"
+    
+    # Step 3: Trigger N8N workflow
+    print("3. Triggering N8N workflow...")
+    n8n_webhook = "http://localhost:5678/webhook-test/phishing-automation"
+    
+    workflow_data = {
+        "campaign_name": "automated_test_campaign",
+        "ai_content": ai_content,
+        "target_count": 1,
+        "timestamp": int(time.time())
+    }
+    
+    try:
+        response = requests.post(n8n_webhook, json=workflow_data)
+        print(f"N8N Response: {response.status_code}")
+    except Exception as e:
+        print(f"N8N Error: {e}")
+    
+    print("Test completed successfully!")
+
+if __name__ == "__main__":
+    run_complete_test()
+Subtask 4.2: Verify All Services
+Check all services are running:
+
+sudo systemctl status gophish n8n ollama
+Test connectivity:
+
+curl -s http://localhost:3333 | head -5
+curl -s http://localhost:5678 | head -5
+curl -s http://localhost:11434/api/tags
+Run the complete integration test:
+
+python3 complete_test.py
+Verification and Testing
+Check GoPhish Dashboard
+Access GoPhish admin panel:
+
+URL: http://localhost:3333
+Check logs for initial admin password: sudo journalctl -u gophish -f
+Verify N8N Workflows
+Access N8N interface:
+
+URL: http://localhost:5678
+Create and test webhook endpoints
+Monitor workflow executions
+Test AI Content Generation
+Test the AI generator directly:
+
+python3 ai_phishing_generator.py "Example Corp" "credential_harvesting"
+Troubleshooting
+GoPhish not starting:
+
+sudo journalctl -u gophish -f
+sudo netstat -tlnp | grep 3333
+N8N connection issues:
+
+sudo journalctl -u n8n -f
+npm list -g n8n
+Ollama model issues:
+
+ollama list
+ollama pull llama2:7b
+Conclusion
+You have successfully created an automated phishing simulation environment that combines:
+
+GoPhish for professional phishing campaign management
+N8N for workflow automation and integration
+AI-powered content generation using local language models
+This integrated system demonstrates how modern phishing attacks can be automated and scaled, providing valuable insights for security awareness training and defense preparation. The automation capabilities you've built can generate realistic phishing content, manage campaigns, and provide comprehensive testing frameworks for organizational security assessments.
+
+Key Achievement: You now understand the technical architecture behind automated phishing systems and can implement comprehensive security testing workflows using entirely open-source tools.
