@@ -1,0 +1,758 @@
+Build PhishGPT: AI-Generated Phishing Content Pipelines
+Learning Objectives
+By completing this lab, you will:
+
+Set up and configure PhishGPT for automated phishing content generation
+Integrate Large Language Models (LLMs) for creating realistic email, SMS, and web form content
+Build and test automated phishing pipeline systems
+Understand AI-powered social engineering attack vectors for defensive purposes
+Prerequisites
+Basic Linux command line knowledge
+Understanding of Python programming fundamentals
+Familiarity with cybersecurity concepts and phishing techniques
+Knowledge of API integration concepts
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Click Start Lab to access your dedicated environment. The machine comes with a bare metal Linux installation, so you'll install all required tools during the lab.
+
+Task 1: Set up PhishGPT for Phishing Content Generation
+Subtask 1.1: Install Required Dependencies
+Update the system and install Python dependencies:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-pip git curl -y
+pip3 install --upgrade pip
+Subtask 1.2: Install AI/ML Libraries
+Install essential libraries for LLM integration:
+
+pip3 install openai transformers torch torchvision torchaudio
+pip3 install requests beautifulsoup4 flask jinja2
+pip3 install langchain langchain-community
+pip3 install huggingface-hub accelerate
+Subtask 1.3: Create PhishGPT Project Structure
+Set up the project directory:
+
+mkdir ~/phishgpt-lab
+cd ~/phishgpt-lab
+mkdir templates outputs logs config
+Subtask 1.4: Configure Local LLM Setup
+Create the main PhishGPT configuration file:
+
+cat > config/phishgpt_config.py << 'EOF'
+import os
+
+# LLM Configuration
+MODEL_NAME = "microsoft/DialoGPT-medium"
+MAX_LENGTH = 512
+TEMPERATURE = 0.8
+TOP_P = 0.9
+
+# Content Types
+CONTENT_TYPES = {
+    'email': {
+        'max_length': 300,
+        'tone': 'professional'
+    },
+    'sms': {
+        'max_length': 160,
+        'tone': 'urgent'
+    },
+    'form': {
+        'max_length': 100,
+        'tone': 'trustworthy'
+    }
+}
+
+# Output Directories
+OUTPUT_DIR = "outputs"
+TEMPLATE_DIR = "templates"
+LOG_DIR = "logs"
+EOF
+Task 2: Integrate LLMs for Email, SMS, and Form Content Creation
+Subtask 2.1: Create Core PhishGPT Engine
+Build the main content generation engine:
+
+cat > phishgpt_engine.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import json
+import logging
+from datetime import datetime
+from transformers import GPT2LMHeadModel, GPT2Tokenizer, pipeline
+from config.phishgpt_config import *
+
+class PhishGPTEngine:
+    def __init__(self):
+        self.setup_logging()
+        self.load_model()
+        
+    def setup_logging(self):
+        logging.basicConfig(
+            filename=f'{LOG_DIR}/phishgpt.log',
+            level=logging.INFO,
+            format='%(asctime)s - %(levelname)s - %(message)s'
+        )
+        self.logger = logging.getLogger(__name__)
+        
+    def load_model(self):
+        try:
+            self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+            self.model = GPT2LMHeadModel.from_pretrained('gpt2')
+            self.generator = pipeline('text-generation', 
+                                    model=self.model, 
+                                    tokenizer=self.tokenizer)
+            self.logger.info("Model loaded successfully")
+        except Exception as e:
+            self.logger.error(f"Model loading failed: {e}")
+            
+    def generate_content(self, content_type, target_info, scenario):
+        prompts = self.create_prompts(content_type, target_info, scenario)
+        generated_content = []
+        
+        for prompt in prompts:
+            try:
+                result = self.generator(
+                    prompt,
+                    max_length=CONTENT_TYPES[content_type]['max_length'],
+                    temperature=TEMPERATURE,
+                    top_p=TOP_P,
+                    num_return_sequences=1,
+                    pad_token_id=self.tokenizer.eos_token_id
+                )
+                generated_content.append(result[0]['generated_text'])
+                self.logger.info(f"Generated {content_type} content")
+            except Exception as e:
+                self.logger.error(f"Content generation failed: {e}")
+                
+        return generated_content
+        
+    def create_prompts(self, content_type, target_info, scenario):
+        base_prompts = {
+            'email': [
+                f"Write a professional email from {scenario['sender']} to {target_info['name']} about {scenario['topic']}:",
+                f"Create an urgent email notification for {target_info['name']} regarding {scenario['topic']}:"
+            ],
+            'sms': [
+                f"Write a short SMS message to {target_info['name']} about {scenario['topic']}:",
+                f"Create an urgent text message for {target_info['name']} regarding {scenario['topic']}:"
+            ],
+            'form': [
+                f"Create form text for {scenario['topic']} targeting {target_info['name']}:",
+                f"Write form content about {scenario['topic']} for user verification:"
+            ]
+        }
+        return base_prompts.get(content_type, [])
+
+if __name__ == "__main__":
+    engine = PhishGPTEngine()
+    print("PhishGPT Engine initialized successfully")
+EOF
+Subtask 2.2: Create Email Content Generator
+Build specialized email content generator:
+
+cat > email_generator.py << 'EOF'
+#!/usr/bin/env python3
+import json
+from phishgpt_engine import PhishGPTEngine
+from datetime import datetime
+
+class EmailGenerator:
+    def __init__(self):
+        self.engine = PhishGPTEngine()
+        
+    def generate_phishing_email(self, target_data, campaign_type):
+        scenarios = {
+            'banking': {
+                'sender': 'security@bank-alerts.com',
+                'topic': 'account security verification required',
+                'subject_templates': [
+                    'Urgent: Account Security Alert',
+                    'Action Required: Verify Your Account',
+                    'Security Notice: Unusual Activity Detected'
+                ]
+            },
+            'social': {
+                'sender': 'notifications@social-network.com',
+                'topic': 'account login from new device',
+                'subject_templates': [
+                    'New Login Alert',
+                    'Security: Unrecognized Device Access',
+                    'Account Access Notification'
+                ]
+            },
+            'corporate': {
+                'sender': 'it-support@company.com',
+                'topic': 'mandatory security update required',
+                'subject_templates': [
+                    'IT Security Update Required',
+                    'Mandatory: System Security Patch',
+                    'Action Required: Security Compliance'
+                ]
+            }
+        }
+        
+        scenario = scenarios.get(campaign_type, scenarios['banking'])
+        
+        # Generate email content
+        content = self.engine.generate_content('email', target_data, scenario)
+        
+        # Create complete email structure
+        email_data = {
+            'timestamp': datetime.now().isoformat(),
+            'target': target_data,
+            'campaign_type': campaign_type,
+            'sender': scenario['sender'],
+            'subject': scenario['subject_templates'][0],
+            'content': content[0] if content else "Generated content unavailable",
+            'html_template': self.create_html_template(content[0] if content else "")
+        }
+        
+        return email_data
+        
+    def create_html_template(self, content):
+        return f"""
+        <html>
+        <body style="font-family: Arial, sans-serif;">
+            <div style="max-width: 600px; margin: 0 auto;">
+                <p>{content}</p>
+                <br>
+                <a href="#" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+                    Verify Account
+                </a>
+            </div>
+        </body>
+        </html>
+        """
+
+if __name__ == "__main__":
+    generator = EmailGenerator()
+    target = {'name': 'John Doe', 'email': 'john.doe@example.com'}
+    email = generator.generate_phishing_email(target, 'banking')
+    print(json.dumps(email, indent=2))
+EOF
+Subtask 2.3: Create SMS Content Generator
+Build SMS phishing content generator:
+
+cat > sms_generator.py << 'EOF'
+#!/usr/bin/env python3
+import json
+from phishgpt_engine import PhishGPTEngine
+from datetime import datetime
+
+class SMSGenerator:
+    def __init__(self):
+        self.engine = PhishGPTEngine()
+        
+    def generate_phishing_sms(self, target_data, campaign_type):
+        scenarios = {
+            'banking': {
+                'sender': 'BANK-ALERT',
+                'topic': 'account suspended - verify immediately',
+                'urgency': 'high'
+            },
+            'delivery': {
+                'sender': 'DELIVERY',
+                'topic': 'package delivery failed - reschedule',
+                'urgency': 'medium'
+            },
+            'prize': {
+                'sender': 'WINNER',
+                'topic': 'congratulations you won - claim prize',
+                'urgency': 'high'
+            }
+        }
+        
+        scenario = scenarios.get(campaign_type, scenarios['banking'])
+        
+        # Generate SMS content
+        content = self.engine.generate_content('sms', target_data, scenario)
+        
+        # Create SMS structure
+        sms_data = {
+            'timestamp': datetime.now().isoformat(),
+            'target': target_data,
+            'campaign_type': campaign_type,
+            'sender': scenario['sender'],
+            'content': content[0][:160] if content else "Generated content unavailable",
+            'urgency': scenario['urgency'],
+            'link': f"https://secure-verify-{campaign_type}.com/verify?id=12345"
+        }
+        
+        return sms_data
+
+if __name__ == "__main__":
+    generator = SMSGenerator()
+    target = {'name': 'Jane Smith', 'phone': '+1234567890'}
+    sms = generator.generate_phishing_sms(target, 'banking')
+    print(json.dumps(sms, indent=2))
+EOF
+Subtask 2.4: Create Form Content Generator
+Build web form phishing content generator:
+
+cat > form_generator.py << 'EOF'
+#!/usr/bin/env python3
+import json
+from phishgpt_engine import PhishGPTEngine
+from datetime import datetime
+
+class FormGenerator:
+    def __init__(self):
+        self.engine = PhishGPTEngine()
+        
+    def generate_phishing_form(self, target_data, form_type):
+        scenarios = {
+            'login': {
+                'sender': 'Security Team',
+                'topic': 'account verification login form',
+                'fields': ['username', 'password', 'email']
+            },
+            'survey': {
+                'sender': 'Research Team',
+                'topic': 'customer satisfaction survey',
+                'fields': ['name', 'email', 'phone', 'feedback']
+            },
+            'support': {
+                'sender': 'Technical Support',
+                'topic': 'technical support request form',
+                'fields': ['name', 'email', 'issue', 'account_id']
+            }
+        }
+        
+        scenario = scenarios.get(form_type, scenarios['login'])
+        
+        # Generate form content
+        content = self.engine.generate_content('form', target_data, scenario)
+        
+        # Create form structure
+        form_data = {
+            'timestamp': datetime.now().isoformat(),
+            'target': target_data,
+            'form_type': form_type,
+            'title': f"{form_type.title()} Verification",
+            'description': content[0] if content else "Please complete the form below",
+            'fields': scenario['fields'],
+            'html_form': self.create_html_form(scenario['fields'], content[0] if content else "")
+        }
+        
+        return form_data
+        
+    def create_html_form(self, fields, description):
+        form_html = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; max-width: 500px; margin: 50px auto;">
+            <h2>Account Verification</h2>
+            <p>{description}</p>
+            <form method="post" action="/submit">
+        """
+        
+        for field in fields:
+            field_type = 'password' if field == 'password' else 'text'
+            form_html += f"""
+                <div style="margin: 15px 0;">
+                    <label for="{field}">{field.replace('_', ' ').title()}:</label><br>
+                    <input type="{field_type}" id="{field}" name="{field}" 
+                           style="width: 100%; padding: 8px; margin: 5px 0;" required>
+                </div>
+            """
+        
+        form_html += """
+                <button type="submit" style="background-color: #007bff; color: white; 
+                        padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer;">
+                    Submit
+                </button>
+            </form>
+        </body>
+        </html>
+        """
+        
+        return form_html
+
+if __name__ == "__main__":
+    generator = FormGenerator()
+    target = {'name': 'Alice Johnson', 'email': 'alice@example.com'}
+    form = generator.generate_phishing_form(target, 'login')
+    print(json.dumps(form, indent=2))
+EOF
+Task 3: Test Phishing Pipeline Automation
+Subtask 3.1: Create Pipeline Automation Script
+Build the main automation pipeline:
+
+cat > phishing_pipeline.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+from datetime import datetime
+from email_generator import EmailGenerator
+from sms_generator import SMSGenerator
+from form_generator import FormGenerator
+
+class PhishingPipeline:
+    def __init__(self):
+        self.email_gen = EmailGenerator()
+        self.sms_gen = SMSGenerator()
+        self.form_gen = FormGenerator()
+        self.ensure_output_dirs()
+        
+    def ensure_output_dirs(self):
+        os.makedirs('outputs/emails', exist_ok=True)
+        os.makedirs('outputs/sms', exist_ok=True)
+        os.makedirs('outputs/forms', exist_ok=True)
+        os.makedirs('outputs/campaigns', exist_ok=True)
+        
+    def run_campaign(self, targets, campaign_config):
+        campaign_id = f"campaign_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        campaign_results = {
+            'campaign_id': campaign_id,
+            'timestamp': datetime.now().isoformat(),
+            'config': campaign_config,
+            'targets': len(targets),
+            'results': {
+                'emails': [],
+                'sms': [],
+                'forms': []
+            }
+        }
+        
+        print(f"Starting campaign: {campaign_id}")
+        
+        for target in targets:
+            print(f"Processing target: {target['name']}")
+            
+            # Generate email content
+            if 'email' in campaign_config['content_types']:
+                email = self.email_gen.generate_phishing_email(
+                    target, campaign_config['email_type']
+                )
+                campaign_results['results']['emails'].append(email)
+                self.save_content('emails', f"{campaign_id}_{target['name']}_email.json", email)
+                
+            # Generate SMS content
+            if 'sms' in campaign_config['content_types']:
+                sms = self.sms_gen.generate_phishing_sms(
+                    target, campaign_config['sms_type']
+                )
+                campaign_results['results']['sms'].append(sms)
+                self.save_content('sms', f"{campaign_id}_{target['name']}_sms.json", sms)
+                
+            # Generate form content
+            if 'form' in campaign_config['content_types']:
+                form = self.form_gen.generate_phishing_form(
+                    target, campaign_config['form_type']
+                )
+                campaign_results['results']['forms'].append(form)
+                self.save_content('forms', f"{campaign_id}_{target['name']}_form.json", form)
+                self.save_html_form(f"{campaign_id}_{target['name']}_form.html", form['html_form'])
+        
+        # Save campaign summary
+        self.save_content('campaigns', f"{campaign_id}_summary.json", campaign_results)
+        print(f"Campaign completed: {campaign_id}")
+        return campaign_results
+        
+    def save_content(self, content_type, filename, data):
+        filepath = f"outputs/{content_type}/{filename}"
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+            
+    def save_html_form(self, filename, html_content):
+        filepath = f"outputs/forms/{filename}"
+        with open(filepath, 'w') as f:
+            f.write(html_content)
+
+if __name__ == "__main__":
+    pipeline = PhishingPipeline()
+    
+    # Sample targets
+    targets = [
+        {'name': 'John Doe', 'email': 'john@example.com', 'phone': '+1234567890'},
+        {'name': 'Jane Smith', 'email': 'jane@example.com', 'phone': '+0987654321'}
+    ]
+    
+    # Campaign configuration
+    config = {
+        'content_types': ['email', 'sms', 'form'],
+        'email_type': 'banking',
+        'sms_type': 'banking',
+        'form_type': 'login'
+    }
+    
+    # Run campaign
+    results = pipeline.run_campaign(targets, config)
+    print(f"Generated {len(results['results']['emails'])} emails")
+    print(f"Generated {len(results['results']['sms'])} SMS messages")
+    print(f"Generated {len(results['results']['forms'])} forms")
+EOF
+Subtask 3.2: Create Test Configuration
+Set up test scenarios:
+
+cat > test_scenarios.py << 'EOF'
+#!/usr/bin/env python3
+import json
+from phishing_pipeline import PhishingPipeline
+
+def run_banking_scenario():
+    print("=== Banking Phishing Scenario ===")
+    pipeline = PhishingPipeline()
+    
+    targets = [
+        {'name': 'Michael Johnson', 'email': 'michael@company.com', 'phone': '+1555123456'},
+        {'name': 'Sarah Wilson', 'email': 'sarah@business.com', 'phone': '+1555654321'}
+    ]
+    
+    config = {
+        'content_types': ['email', 'sms', 'form'],
+        'email_type': 'banking',
+        'sms_type': 'banking',
+        'form_type': 'login'
+    }
+    
+    return pipeline.run_campaign(targets, config)
+
+def run_social_scenario():
+    print("=== Social Media Phishing Scenario ===")
+    pipeline = PhishingPipeline()
+    
+    targets = [
+        {'name': 'David Brown', 'email': 'david@email.com', 'phone': '+1555789012'}
+    ]
+    
+    config = {
+        'content_types': ['email', 'form'],
+        'email_type': 'social',
+        'form_type': 'survey'
+    }
+    
+    return pipeline.run_campaign(targets, config)
+
+def run_corporate_scenario():
+    print("=== Corporate Phishing Scenario ===")
+    pipeline = PhishingPipeline()
+    
+    targets = [
+        {'name': 'Lisa Davis', 'email': 'lisa@corp.com', 'phone': '+1555345678'}
+    ]
+    
+    config = {
+        'content_types': ['email', 'sms', 'form'],
+        'email_type': 'corporate',
+        'sms_type': 'delivery',
+        'form_type': 'support'
+    }
+    
+    return pipeline.run_campaign(targets, config)
+
+if __name__ == "__main__":
+    scenarios = [
+        run_banking_scenario,
+        run_social_scenario,
+        run_corporate_scenario
+    ]
+    
+    for scenario in scenarios:
+        try:
+            result = scenario()
+            print(f"Scenario completed successfully\n")
+        except Exception as e:
+            print(f"Scenario failed: {e}\n")
+EOF
+Subtask 3.3: Run Pipeline Tests
+Execute the pipeline tests:
+
+# Make scripts executable
+chmod +x *.py
+
+# Run individual generators
+echo "Testing Email Generator..."
+python3 email_generator.py
+
+echo "Testing SMS Generator..."
+python3 sms_generator.py
+
+echo "Testing Form Generator..."
+python3 form_generator.py
+
+# Run full pipeline test
+echo "Running Full Pipeline Test..."
+python3 phishing_pipeline.py
+
+# Run scenario tests
+echo "Running Scenario Tests..."
+python3 test_scenarios.py
+Subtask 3.4: Verify Generated Content
+Check the generated content:
+
+# List generated files
+echo "Generated Email Content:"
+ls -la outputs/emails/
+
+echo "Generated SMS Content:"
+ls -la outputs/sms/
+
+echo "Generated Form Content:"
+ls -la outputs/forms/
+
+echo "Campaign Summaries:"
+ls -la outputs/campaigns/
+
+# View sample generated content
+echo "Sample Email Content:"
+cat outputs/emails/*.json | head -20
+
+echo "Sample Form HTML:"
+cat outputs/forms/*.html | head -20
+Subtask 3.5: Create Analysis Script
+Build content analysis tool:
+
+cat > analyze_content.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+from collections import Counter
+
+class ContentAnalyzer:
+    def __init__(self):
+        self.output_dir = 'outputs'
+        
+    def analyze_campaigns(self):
+        campaign_files = [f for f in os.listdir(f'{self.output_dir}/campaigns') 
+                         if f.endswith('_summary.json')]
+        
+        total_campaigns = len(campaign_files)
+        total_emails = 0
+        total_sms = 0
+        total_forms = 0
+        
+        campaign_types = Counter()
+        
+        for campaign_file in campaign_files:
+            with open(f'{self.output_dir}/campaigns/{campaign_file}', 'r') as f:
+                campaign = json.load(f)
+                
+            total_emails += len(campaign['results']['emails'])
+            total_sms += len(campaign['results']['sms'])
+            total_forms += len(campaign['results']['forms'])
+            
+            # Count campaign types
+            config = campaign['config']
+            if 'email_type' in config:
+                campaign_types[config['email_type']] += 1
+        
+        print("=== PhishGPT Campaign Analysis ===")
+        print(f"Total Campaigns: {total_campaigns}")
+        print(f"Total Emails Generated: {total_emails}")
+        print(f"Total SMS Generated: {total_sms}")
+        print(f"Total Forms Generated: {total_forms}")
+        print(f"Campaign Types: {dict(campaign_types)}")
+        
+        return {
+            'campaigns': total_campaigns,
+            'emails': total_emails,
+            'sms': total_sms,
+            'forms': total_forms,
+            'types': dict(campaign_types)
+        }
+
+if __name__ == "__main__":
+    analyzer = ContentAnalyzer()
+    results = analyzer.analyze_campaigns()
+EOF
+
+# Run analysis
+python3 analyze_content.py
+Verification and Testing
+Final Pipeline Test
+Run a comprehensive test of the entire system:
+
+# Create final test script
+cat > final_test.py << 'EOF'
+#!/usr/bin/env python3
+from phishing_pipeline import PhishingPipeline
+import json
+
+def final_comprehensive_test():
+    print("=== Final PhishGPT Pipeline Test ===")
+    
+    pipeline = PhishingPipeline()
+    
+    # Comprehensive target list
+    targets = [
+        {'name': 'Test User 1', 'email': 'test1@example.com', 'phone': '+1555000001'},
+        {'name': 'Test User 2', 'email': 'test2@example.com', 'phone': '+1555000002'},
+        {'name': 'Test User 3', 'email': 'test3@example.com', 'phone': '+1555000003'}
+    ]
+    
+    # Test all content types and scenarios
+    test_configs = [
+        {
+            'name': 'Banking Campaign',
+            'config': {
+                'content_types': ['email', 'sms', 'form'],
+                'email_type': 'banking',
+                'sms_type': 'banking',
+                'form_type': 'login'
+            }
+        },
+        {
+            'name': 'Social Media Campaign',
+            'config': {
+                'content_types': ['email', 'form'],
+                'email_type': 'social',
+                'form_type': 'survey'
+            }
+        },
+        {
+            'name': 'Corporate Campaign',
+            'config': {
+                'content_types': ['email', 'sms', 'form'],
+                'email_type': 'corporate',
+                'sms_type': 'delivery',
+                'form_type': 'support'
+            }
+        }
+    ]
+    
+    results = []
+    for test in test_configs:
+        print(f"\nRunning {test['name']}...")
+        try:
+            result = pipeline.run_campaign(targets, test['config'])
+            results.append({
+                'name': test['name'],
+                'status': 'SUCCESS',
+                'emails': len(result['results']['emails']),
+                'sms': len(result['results']['sms']),
+                'forms': len(result['results']['forms'])
+            })
+            print(f"✓ {test['name']} completed successfully")
+        except Exception as e:
+            results.append({
+                'name': test['name'],
+                'status': 'FAILED',
+                'error': str(e)
+            })
+            print(f"✗ {test['name']} failed: {e}")
+    
+    # Summary
+    print("\n=== Test Summary ===")
+    for result in results:
+        if result['status'] == 'SUCCESS':
+            print(f"✓ {result['name']}: {result['emails']} emails, {result['sms']} SMS, {result['forms']} forms")
+        else:
+            print(f"✗ {result['name']}: {result['error']}")
+    
+    return results
+
+if __name__ == "__main__":
+    final_comprehensive_test()
+EOF
+
+# Run final test
+python3 final_test.py
+Conclusion
+You have successfully built PhishGPT, an AI-powered phishing content generation pipeline that demonstrates:
+
+Automated Content Generation: Created realistic phishing emails, SMS messages, and web forms using Large Language Models
+Multi-Channel Campaigns: Integrated multiple attack vectors (email, SMS, web forms) in coordinated campaigns
+Pipeline Automation: Built scalable automation systems for generating targeted phishing content at scale
+Content Customization: Implemented scenario-based content generation for banking, social media, and corporate phishing attacks
+This lab provides critical insights into AI-powered social engineering attacks, enabling security professionals to better understand and defend against sophisticated phishing campaigns. The automated pipeline demonstrates how attackers might leverage AI to create convincing, personalized phishing content, highlighting the importance of advanced detection and prevention mechanisms in modern cybersecurity defense strategies.
+
+Key Skills Developed: AI/ML integration for cybersecurity, automated content generation, phishing campaign orchestration, and social engineering attack vector analysis.
