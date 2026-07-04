@@ -1,0 +1,461 @@
+ElevenLabs Voice Cloning for Vishing Attacks
+Learning Objectives
+By completing this lab, students will:
+
+Set up and configure ElevenLabs voice cloning technology
+Generate realistic cloned voice recordings from sample audio
+Simulate vishing (voice phishing) attack scenarios using cloned voices
+Understand the security implications and detection methods for voice cloning attacks
+Prerequisites
+Basic Linux command line knowledge
+Understanding of social engineering concepts
+Familiarity with audio file formats (WAV, MP3)
+Python programming fundamentals
+Lab Environment
+Al Nafi provides Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated environment. The provided Linux machine is bare metal with no pre-installed tools, so you will install all required components during the lab.
+
+Task 1: Set up ElevenLabs for Voice Cloning
+Subtask 1.1: Install Required Dependencies
+Update the system and install Python dependencies:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-pip ffmpeg curl wget -y
+pip3 install requests python-dotenv pydub
+Subtask 1.2: Install ElevenLabs Python SDK
+Install the official ElevenLabs Python client:
+
+pip3 install elevenlabs
+Subtask 1.3: Set up API Configuration
+Create a configuration directory and environment file:
+
+mkdir ~/voice-cloning-lab
+cd ~/voice-cloning-lab
+touch .env
+Create the environment configuration:
+
+cat > .env << 'EOF'
+ELEVENLABS_API_KEY=your_api_key_here
+EOF
+Note: For educational purposes, you can use ElevenLabs' free tier. Sign up at elevenlabs.io and replace your_api_key_here with your actual API key.
+
+Subtask 1.4: Create Voice Cloning Script
+Create the main voice cloning script:
+
+cat > voice_cloner.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import requests
+from elevenlabs import clone, generate, play, set_api_key
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+class VoiceCloner:
+    def __init__(self):
+        self.api_key = os.getenv('ELEVENLABS_API_KEY')
+        if not self.api_key:
+            raise ValueError("API key not found. Please set ELEVENLABS_API_KEY in .env file")
+        set_api_key(self.api_key)
+    
+    def clone_voice(self, name, audio_files, description="Cloned voice for security testing"):
+        """Clone a voice from audio samples"""
+        try:
+            voice = clone(
+                name=name,
+                files=audio_files,
+                description=description
+            )
+            print(f"Voice cloned successfully: {voice}")
+            return voice
+        except Exception as e:
+            print(f"Error cloning voice: {e}")
+            return None
+    
+    def generate_speech(self, text, voice_id, output_file="output.mp3"):
+        """Generate speech using cloned voice"""
+        try:
+            audio = generate(
+                text=text,
+                voice=voice_id,
+                model="eleven_monolingual_v1"
+            )
+            
+            with open(output_file, 'wb') as f:
+                f.write(audio)
+            
+            print(f"Audio generated successfully: {output_file}")
+            return output_file
+        except Exception as e:
+            print(f"Error generating speech: {e}")
+            return None
+
+if __name__ == "__main__":
+    cloner = VoiceCloner()
+    print("Voice cloning setup complete!")
+EOF
+Task 2: Generate Cloned Voice Recordings
+Subtask 2.1: Prepare Sample Audio Files
+Create a directory for audio samples and download test audio:
+
+mkdir audio_samples
+cd audio_samples
+
+# Download sample audio files (replace with actual target voice samples)
+wget -O sample1.wav "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav"
+wget -O sample2.wav "https://www.soundjay.com/misc/sounds/bell-ringing-04.wav"
+
+cd ..
+Subtask 2.2: Create Voice Cloning Automation Script
+Create an automated cloning script:
+
+cat > clone_automation.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+from voice_cloner import VoiceCloner
+
+def main():
+    if len(sys.argv) < 4:
+        print("Usage: python3 clone_automation.py <voice_name> <audio_file1> <audio_file2> [audio_file3...]")
+        sys.exit(1)
+    
+    voice_name = sys.argv[1]
+    audio_files = sys.argv[2:]
+    
+    # Verify audio files exist
+    for file in audio_files:
+        if not os.path.exists(file):
+            print(f"Error: Audio file {file} not found")
+            sys.exit(1)
+    
+    cloner = VoiceCloner()
+    
+    print(f"Cloning voice: {voice_name}")
+    print(f"Using audio files: {', '.join(audio_files)}")
+    
+    # Clone the voice
+    voice = cloner.clone_voice(voice_name, audio_files)
+    
+    if voice:
+        print(f"Voice cloning successful!")
+        print(f"Voice ID: {voice}")
+        
+        # Save voice ID for later use
+        with open(f"{voice_name}_voice_id.txt", 'w') as f:
+            f.write(str(voice))
+        
+        return voice
+    else:
+        print("Voice cloning failed!")
+        return None
+
+if __name__ == "__main__":
+    main()
+EOF
+Subtask 2.3: Execute Voice Cloning
+Run the voice cloning process:
+
+python3 clone_automation.py "target_voice" audio_samples/sample1.wav audio_samples/sample2.wav
+Task 3: Simulate Vishing Attacks with Cloned Voices
+Subtask 3.1: Create Vishing Scenario Scripts
+Create common vishing attack scenarios:
+
+cat > vishing_scenarios.py << 'EOF'
+#!/usr/bin/env python3
+import os
+from voice_cloner import VoiceCloner
+
+class VishingSimulator:
+    def __init__(self):
+        self.cloner = VoiceCloner()
+        self.scenarios = {
+            "bank_fraud": "Hello, this is calling from your bank's security department. We've detected suspicious activity on your account. Please verify your account number and PIN to secure your account immediately.",
+            "tech_support": "Hi, this is Microsoft technical support. We've detected malware on your computer. Please allow me remote access to fix this critical security issue.",
+            "ceo_fraud": "This is urgent. I need you to transfer $50,000 to our new vendor account immediately. I'll send you the details via email. This is confidential.",
+            "family_emergency": "Hi, this is your grandson calling from jail. I need you to wire money for bail immediately. Please don't tell my parents about this.",
+            "irs_scam": "This is the IRS calling about unpaid taxes. You have a warrant for your arrest. Pay immediately to avoid legal action."
+        }
+    
+    def generate_vishing_audio(self, scenario_name, voice_id, custom_text=None):
+        """Generate vishing audio for specified scenario"""
+        if custom_text:
+            text = custom_text
+        elif scenario_name in self.scenarios:
+            text = self.scenarios[scenario_name]
+        else:
+            print(f"Unknown scenario: {scenario_name}")
+            return None
+        
+        output_file = f"vishing_{scenario_name}.mp3"
+        result = self.cloner.generate_speech(text, voice_id, output_file)
+        
+        if result:
+            print(f"Vishing audio generated: {output_file}")
+            print(f"Scenario: {scenario_name}")
+            print(f"Text: {text[:100]}...")
+        
+        return result
+    
+    def list_scenarios(self):
+        """List available vishing scenarios"""
+        print("Available vishing scenarios:")
+        for name, description in self.scenarios.items():
+            print(f"- {name}: {description[:50]}...")
+
+def main():
+    simulator = VishingSimulator()
+    
+    # Check if voice ID file exists
+    voice_id_file = "target_voice_voice_id.txt"
+    if not os.path.exists(voice_id_file):
+        print("Error: Voice ID file not found. Please run voice cloning first.")
+        return
+    
+    # Read voice ID
+    with open(voice_id_file, 'r') as f:
+        voice_id = f.read().strip()
+    
+    print(f"Using voice ID: {voice_id}")
+    
+    # Generate vishing scenarios
+    simulator.list_scenarios()
+    
+    scenarios_to_generate = ["bank_fraud", "tech_support", "ceo_fraud"]
+    
+    for scenario in scenarios_to_generate:
+        print(f"\nGenerating scenario: {scenario}")
+        simulator.generate_vishing_audio(scenario, voice_id)
+
+if __name__ == "__main__":
+    main()
+EOF
+Subtask 3.2: Create Detection and Analysis Tools
+Create tools to analyze and detect voice cloning:
+
+cat > detection_tools.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import subprocess
+from pydub import AudioSegment
+import json
+
+class VoiceAnalyzer:
+    def __init__(self):
+        self.analysis_results = {}
+    
+    def analyze_audio_properties(self, audio_file):
+        """Analyze basic audio properties"""
+        try:
+            audio = AudioSegment.from_file(audio_file)
+            
+            properties = {
+                "duration_seconds": len(audio) / 1000.0,
+                "frame_rate": audio.frame_rate,
+                "channels": audio.channels,
+                "sample_width": audio.sample_width,
+                "max_amplitude": audio.max,
+                "rms": audio.rms
+            }
+            
+            print(f"Audio Properties for {audio_file}:")
+            for key, value in properties.items():
+                print(f"  {key}: {value}")
+            
+            return properties
+        except Exception as e:
+            print(f"Error analyzing {audio_file}: {e}")
+            return None
+    
+    def compare_audio_files(self, original_file, cloned_file):
+        """Compare original and cloned audio properties"""
+        print(f"\nComparing {original_file} vs {cloned_file}")
+        
+        original_props = self.analyze_audio_properties(original_file)
+        cloned_props = self.analyze_audio_properties(cloned_file)
+        
+        if original_props and cloned_props:
+            print("\nComparison Results:")
+            for key in original_props:
+                if key in cloned_props:
+                    diff = abs(original_props[key] - cloned_props[key])
+                    print(f"  {key} difference: {diff}")
+    
+    def generate_detection_report(self, audio_files):
+        """Generate detection report for multiple audio files"""
+        report = {
+            "analysis_timestamp": "2024-01-01",
+            "files_analyzed": len(audio_files),
+            "suspicious_indicators": [],
+            "recommendations": []
+        }
+        
+        for audio_file in audio_files:
+            if os.path.exists(audio_file):
+                props = self.analyze_audio_properties(audio_file)
+                if props:
+                    # Simple heuristics for detection
+                    if props["duration_seconds"] < 10:
+                        report["suspicious_indicators"].append(f"{audio_file}: Very short duration")
+                    
+                    if props["frame_rate"] != 22050:  # Common AI voice rate
+                        report["suspicious_indicators"].append(f"{audio_file}: Unusual sample rate")
+        
+        report["recommendations"] = [
+            "Verify caller identity through alternative channels",
+            "Be suspicious of urgent requests for money or information",
+            "Listen for unnatural speech patterns or artifacts",
+            "Implement voice authentication systems"
+        ]
+        
+        # Save report
+        with open("detection_report.json", 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        print("\nDetection Report Generated:")
+        print(json.dumps(report, indent=2))
+
+def main():
+    analyzer = VoiceAnalyzer()
+    
+    # Find generated vishing audio files
+    audio_files = [f for f in os.listdir('.') if f.startswith('vishing_') and f.endswith('.mp3')]
+    
+    if audio_files:
+        print(f"Found {len(audio_files)} vishing audio files for analysis")
+        analyzer.generate_detection_report(audio_files)
+    else:
+        print("No vishing audio files found. Please generate scenarios first.")
+
+if __name__ == "__main__":
+    main()
+EOF
+Subtask 3.3: Execute Vishing Simulation
+Run the complete vishing simulation:
+
+# Generate vishing scenarios
+python3 vishing_scenarios.py
+
+# Analyze generated audio
+python3 detection_tools.py
+
+# List generated files
+echo "Generated files:"
+ls -la *.mp3 *.json *.txt
+Subtask 3.4: Create Mitigation Guidelines
+Create a comprehensive mitigation guide:
+
+cat > mitigation_guide.md << 'EOF'
+# Voice Cloning Attack Mitigation Guide
+
+## Detection Methods
+
+### Technical Indicators
+- Unusual audio compression artifacts
+- Inconsistent background noise patterns
+- Unnatural speech rhythm or intonation
+- Limited vocabulary or repetitive phrases
+
+### Behavioral Indicators
+- Urgent requests for money or sensitive information
+- Reluctance to answer personal questions
+- Calls at unusual times
+- Pressure to act immediately
+
+## Prevention Strategies
+
+### For Organizations
+1. Implement voice authentication systems
+2. Establish verification protocols for financial transactions
+3. Train employees on social engineering tactics
+4. Use callback procedures for sensitive requests
+
+### For Individuals
+1. Verify caller identity through independent channels
+2. Never provide sensitive information over unsolicited calls
+3. Be suspicious of urgent financial requests
+4. Use established communication channels for verification
+
+## Response Procedures
+
+### If You Suspect a Voice Cloning Attack
+1. End the call immediately
+2. Contact the claimed organization directly
+3. Report the incident to authorities
+4. Document the interaction details
+
+### For Security Teams
+1. Implement real-time voice analysis tools
+2. Monitor for unusual communication patterns
+3. Establish incident response procedures
+4. Conduct regular security awareness training
+EOF
+Verification and Testing
+Verify Installation and Setup
+Check that all components are properly installed:
+
+# Verify Python packages
+python3 -c "import elevenlabs, requests, pydub; print('All packages installed successfully')"
+
+# Check generated files
+ls -la *.py *.md *.json *.txt *.mp3 2>/dev/null || echo "Some files may not be generated yet"
+
+# Test basic functionality
+python3 -c "from voice_cloner import VoiceCloner; print('Voice cloner module loaded successfully')"
+Test Audio Analysis
+Run a quick analysis test:
+
+# Create a test audio file if none exist
+if [ ! -f "test_audio.wav" ]; then
+    # Generate a simple test tone
+    python3 -c "
+from pydub import AudioSegment
+from pydub.generators import Sine
+tone = Sine(440).to_audio_segment(duration=3000)
+tone.export('test_audio.wav', format='wav')
+print('Test audio file created')
+"
+fi
+
+# Run analysis on test file
+python3 -c "
+from detection_tools import VoiceAnalyzer
+analyzer = VoiceAnalyzer()
+analyzer.analyze_audio_properties('test_audio.wav')
+"
+Security Considerations and Ethical Guidelines
+Important Notes
+Educational Purpose Only: This lab is designed for cybersecurity education and awareness
+Legal Compliance: Ensure all activities comply with local laws and regulations
+Ethical Use: Never use voice cloning technology for malicious purposes
+Consent Required: Only clone voices with explicit permission from the voice owner
+Best Practices
+Responsible Disclosure: Report vulnerabilities through proper channels
+Documentation: Maintain detailed logs of all testing activities
+Scope Limitation: Restrict testing to authorized environments only
+Data Protection: Securely handle and dispose of voice samples
+Troubleshooting
+Common Issues
+API Key Issues:
+
+# Verify API key is set
+grep ELEVENLABS_API_KEY .env
+Audio File Problems:
+
+# Check audio file format
+file audio_samples/*.wav
+Python Module Errors:
+
+# Reinstall packages if needed
+pip3 install --upgrade elevenlabs pydub requests python-dotenv
+Conclusion
+In this lab, you successfully:
+
+Set up ElevenLabs voice cloning technology on a Linux system
+Generated realistic cloned voice recordings from audio samples
+Simulated various vishing attack scenarios using cloned voices
+Implemented detection and analysis tools for voice cloning attacks
+Created comprehensive mitigation strategies and guidelines
+This hands-on experience demonstrates the sophisticated nature of modern social engineering attacks and the importance of implementing robust security measures. Understanding these techniques is crucial for cybersecurity professionals to develop effective defenses against voice-based attacks.
+
+The knowledge gained from this lab enables you to better protect organizations and individuals from emerging voice cloning threats while maintaining ethical standards in cybersecurity research and education.
