@@ -1,0 +1,589 @@
+Automate Sentiment Analysis + Psychological Profiling with Hugging Face Models
+Learning Objectives
+By completing this lab, you will:
+
+Set up and configure Hugging Face models for automated sentiment analysis
+Implement psychological profiling techniques using AI models
+Create automated analysis pipelines for phishing campaign detection
+Build a complete sentiment and psychological analysis system using open-source tools
+Prerequisites
+Basic understanding of Python programming
+Familiarity with command-line operations in Linux
+Understanding of machine learning concepts
+Knowledge of text processing fundamentals
+Lab Environment
+Al Nafi provides Linux-based cloud machines for this lab. Simply click Start Lab to access your dedicated Linux machine. The provided machine is bare metal with no pre-installed tools, so you will install all required components during the lab.
+
+Task 1: Set up Hugging Face Models for Sentiment Analysis
+Subtask 1.1: Install Required Dependencies
+Update the system and install Python dependencies:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install python3 python3-pip python3-venv git -y
+Create and activate a virtual environment:
+
+python3 -m venv sentiment_lab
+source sentiment_lab/bin/activate
+Install required Python packages:
+
+pip install transformers torch torchvision torchaudio datasets accelerate
+pip install pandas numpy matplotlib seaborn scikit-learn
+pip install huggingface-hub tokenizers
+Subtask 1.2: Create Sentiment Analysis Script
+Create the main sentiment analysis module:
+
+mkdir -p ~/sentiment_lab
+cd ~/sentiment_lab
+Create the sentiment analyzer:
+
+# sentiment_analyzer.py
+from transformers import pipeline, AutoTokenizer, AutoModelForSequenceClassification
+import pandas as pd
+import json
+from datetime import datetime
+
+class SentimentAnalyzer:
+    def __init__(self):
+        # Initialize multiple sentiment models
+        self.basic_sentiment = pipeline("sentiment-analysis", 
+                                      model="cardiffnlp/twitter-roberta-base-sentiment-latest")
+        self.emotion_analyzer = pipeline("text-classification", 
+                                       model="j-hartmann/emotion-english-distilroberta-base")
+        
+    def analyze_sentiment(self, text):
+        """Analyze sentiment of given text"""
+        basic_result = self.basic_sentiment(text)[0]
+        emotion_result = self.emotion_analyzer(text)[0]
+        
+        return {
+            'text': text,
+            'sentiment': basic_result['label'],
+            'sentiment_score': basic_result['score'],
+            'emotion': emotion_result['label'],
+            'emotion_score': emotion_result['score'],
+            'timestamp': datetime.now().isoformat()
+        }
+    
+    def batch_analyze(self, texts):
+        """Analyze multiple texts"""
+        results = []
+        for text in texts:
+            results.append(self.analyze_sentiment(text))
+        return results
+
+if __name__ == "__main__":
+    analyzer = SentimentAnalyzer()
+    
+    # Test with sample texts
+    test_texts = [
+        "I love this new product! It's amazing!",
+        "This service is terrible and disappointing.",
+        "The weather is okay today, nothing special.",
+        "Urgent! Your account will be suspended unless you click here immediately!"
+    ]
+    
+    results = analyzer.batch_analyze(test_texts)
+    
+    for result in results:
+        print(f"Text: {result['text'][:50]}...")
+        print(f"Sentiment: {result['sentiment']} ({result['sentiment_score']:.3f})")
+        print(f"Emotion: {result['emotion']} ({result['emotion_score']:.3f})")
+        print("-" * 60)
+Save and run the script:
+
+python3 sentiment_analyzer.py
+Task 2: Implement Psychological Profiling Techniques
+Subtask 2.1: Create Psychological Profile Analyzer
+Create a psychological profiling module:
+
+# psychological_profiler.py
+from transformers import pipeline
+import re
+import pandas as pd
+from collections import Counter
+import numpy as np
+
+class PsychologicalProfiler:
+    def __init__(self):
+        # Initialize personality analysis model
+        self.personality_analyzer = pipeline("text-classification", 
+                                           model="martin-ha/toxic-comment-model")
+        
+    def analyze_linguistic_patterns(self, text):
+        """Analyze linguistic patterns for psychological insights"""
+        patterns = {
+            'urgency_words': len(re.findall(r'\b(urgent|immediate|now|quickly|asap|hurry)\b', text.lower())),
+            'authority_words': len(re.findall(r'\b(must|required|mandatory|official|government)\b', text.lower())),
+            'fear_words': len(re.findall(r'\b(danger|risk|threat|warning|alert|suspended)\b', text.lower())),
+            'reward_words': len(re.findall(r'\b(free|win|prize|bonus|reward|gift)\b', text.lower())),
+            'personal_pronouns': len(re.findall(r'\b(you|your|yours)\b', text.lower())),
+            'exclamation_marks': text.count('!'),
+            'question_marks': text.count('?'),
+            'capital_letters': sum(1 for c in text if c.isupper()),
+            'word_count': len(text.split()),
+            'sentence_count': len(re.split(r'[.!?]+', text))
+        }
+        
+        return patterns
+    
+    def calculate_manipulation_score(self, patterns):
+        """Calculate manipulation score based on linguistic patterns"""
+        score = 0
+        
+        # Weight different factors
+        score += patterns['urgency_words'] * 2
+        score += patterns['authority_words'] * 1.5
+        score += patterns['fear_words'] * 2.5
+        score += patterns['reward_words'] * 1.5
+        score += min(patterns['exclamation_marks'], 5) * 0.5
+        score += min(patterns['capital_letters'] / max(patterns['word_count'], 1), 0.3) * 10
+        
+        # Normalize score (0-100)
+        normalized_score = min(score * 5, 100)
+        return normalized_score
+    
+    def generate_psychological_profile(self, text):
+        """Generate comprehensive psychological profile"""
+        patterns = self.analyze_linguistic_patterns(text)
+        manipulation_score = self.calculate_manipulation_score(patterns)
+        
+        # Determine profile characteristics
+        profile = {
+            'manipulation_score': manipulation_score,
+            'urgency_level': 'High' if patterns['urgency_words'] > 2 else 'Medium' if patterns['urgency_words'] > 0 else 'Low',
+            'authority_appeal': 'High' if patterns['authority_words'] > 1 else 'Medium' if patterns['authority_words'] > 0 else 'Low',
+            'fear_tactics': 'High' if patterns['fear_words'] > 2 else 'Medium' if patterns['fear_words'] > 0 else 'Low',
+            'reward_motivation': 'High' if patterns['reward_words'] > 1 else 'Medium' if patterns['reward_words'] > 0 else 'Low',
+            'personalization': 'High' if patterns['personal_pronouns'] > 3 else 'Medium' if patterns['personal_pronouns'] > 0 else 'Low',
+            'emotional_intensity': 'High' if patterns['exclamation_marks'] > 3 else 'Medium' if patterns['exclamation_marks'] > 0 else 'Low',
+            'linguistic_patterns': patterns
+        }
+        
+        return profile
+
+if __name__ == "__main__":
+    profiler = PsychologicalProfiler()
+    
+    # Test with phishing-like text
+    test_text = """
+    URGENT! Your PayPal account will be suspended immediately unless you verify your information NOW!
+    Click here to avoid account closure. This is an official notice from PayPal Security Team.
+    You must act quickly to prevent losing access to your funds!
+    """
+    
+    profile = profiler.generate_psychological_profile(test_text)
+    
+    print("Psychological Profile Analysis:")
+    print(f"Manipulation Score: {profile['manipulation_score']:.1f}/100")
+    print(f"Urgency Level: {profile['urgency_level']}")
+    print(f"Authority Appeal: {profile['authority_appeal']}")
+    print(f"Fear Tactics: {profile['fear_tactics']}")
+    print(f"Reward Motivation: {profile['reward_motivation']}")
+    print(f"Personalization: {profile['personalization']}")
+    print(f"Emotional Intensity: {profile['emotional_intensity']}")
+Save and run the psychological profiler:
+
+python3 psychological_profiler.py
+Subtask 2.2: Create Integrated Analysis System
+Combine sentiment analysis and psychological profiling:
+
+# integrated_analyzer.py
+from sentiment_analyzer import SentimentAnalyzer
+from psychological_profiler import PsychologicalProfiler
+import json
+import pandas as pd
+from datetime import datetime
+
+class IntegratedAnalyzer:
+    def __init__(self):
+        self.sentiment_analyzer = SentimentAnalyzer()
+        self.psychological_profiler = PsychologicalProfiler()
+    
+    def comprehensive_analysis(self, text):
+        """Perform comprehensive analysis combining sentiment and psychological profiling"""
+        sentiment_result = self.sentiment_analyzer.analyze_sentiment(text)
+        psychological_profile = self.psychological_profiler.generate_psychological_profile(text)
+        
+        # Calculate overall threat score
+        threat_score = self.calculate_threat_score(sentiment_result, psychological_profile)
+        
+        return {
+            'text': text,
+            'sentiment_analysis': sentiment_result,
+            'psychological_profile': psychological_profile,
+            'threat_score': threat_score,
+            'risk_level': self.determine_risk_level(threat_score),
+            'analysis_timestamp': datetime.now().isoformat()
+        }
+    
+    def calculate_threat_score(self, sentiment, psychological):
+        """Calculate overall threat score (0-100)"""
+        score = 0
+        
+        # Sentiment factors
+        if sentiment['sentiment'] == 'NEGATIVE':
+            score += 20
+        elif sentiment['sentiment'] == 'POSITIVE' and psychological['reward_motivation'] == 'High':
+            score += 15
+        
+        # Psychological factors
+        score += psychological['manipulation_score'] * 0.4
+        
+        if psychological['urgency_level'] == 'High':
+            score += 15
+        if psychological['fear_tactics'] == 'High':
+            score += 20
+        if psychological['authority_appeal'] == 'High':
+            score += 10
+        
+        return min(score, 100)
+    
+    def determine_risk_level(self, threat_score):
+        """Determine risk level based on threat score"""
+        if threat_score >= 70:
+            return "HIGH RISK"
+        elif threat_score >= 40:
+            return "MEDIUM RISK"
+        else:
+            return "LOW RISK"
+
+if __name__ == "__main__":
+    analyzer = IntegratedAnalyzer()
+    
+    # Test with various text samples
+    test_samples = [
+        "Congratulations! You've won $1000! Click here to claim your prize now!",
+        "Your account security has been compromised. Immediate action required to prevent data loss.",
+        "Thank you for your recent purchase. Your order will be delivered tomorrow.",
+        "URGENT: IRS Notice - Pay your taxes immediately or face legal consequences!"
+    ]
+    
+    print("Comprehensive Analysis Results:")
+    print("=" * 80)
+    
+    for i, text in enumerate(test_samples, 1):
+        result = analyzer.comprehensive_analysis(text)
+        
+        print(f"\nSample {i}:")
+        print(f"Text: {text}")
+        print(f"Sentiment: {result['sentiment_analysis']['sentiment']} "
+              f"({result['sentiment_analysis']['sentiment_score']:.3f})")
+        print(f"Emotion: {result['sentiment_analysis']['emotion']} "
+              f"({result['sentiment_analysis']['emotion_score']:.3f})")
+        print(f"Manipulation Score: {result['psychological_profile']['manipulation_score']:.1f}/100")
+        print(f"Threat Score: {result['threat_score']:.1f}/100")
+        print(f"Risk Level: {result['risk_level']}")
+        print("-" * 60)
+Run the integrated analyzer:
+
+python3 integrated_analyzer.py
+Task 3: Automate Analysis for Phishing Campaigns
+Subtask 3.1: Create Phishing Detection System
+Build an automated phishing detection system:
+
+# phishing_detector.py
+from integrated_analyzer import IntegratedAnalyzer
+import pandas as pd
+import json
+import os
+from datetime import datetime
+import re
+
+class PhishingDetector:
+    def __init__(self):
+        self.analyzer = IntegratedAnalyzer()
+        self.results_dir = "analysis_results"
+        os.makedirs(self.results_dir, exist_ok=True)
+    
+    def load_email_samples(self, file_path=None):
+        """Load email samples for analysis"""
+        if file_path and os.path.exists(file_path):
+            with open(file_path, 'r') as f:
+                return json.load(f)
+        else:
+            # Create sample phishing emails for testing
+            return [
+                {
+                    "id": 1,
+                    "subject": "Urgent: Your Account Will Be Closed",
+                    "body": "Dear Customer, Your account will be permanently closed in 24 hours unless you verify your information immediately. Click here to prevent account closure. This is your final warning!",
+                    "sender": "security@fake-bank.com"
+                },
+                {
+                    "id": 2,
+                    "subject": "Congratulations! You've Won!",
+                    "body": "You are our lucky winner! You've won $5000 cash prize! Click here now to claim your reward. Limited time offer - act fast!",
+                    "sender": "winner@lottery-fake.com"
+                },
+                {
+                    "id": 3,
+                    "subject": "Meeting Reminder",
+                    "body": "Hi, just a friendly reminder about our meeting tomorrow at 2 PM. Please let me know if you need to reschedule. Thanks!",
+                    "sender": "colleague@company.com"
+                },
+                {
+                    "id": 4,
+                    "subject": "IRS Tax Notice",
+                    "body": "IMMEDIATE ACTION REQUIRED: You owe $2,847 in back taxes. Pay now to avoid arrest warrant. Call 1-800-FAKE-IRS immediately!",
+                    "sender": "notices@fake-irs.gov"
+                }
+            ]
+    
+    def analyze_email_batch(self, emails):
+        """Analyze a batch of emails for phishing indicators"""
+        results = []
+        
+        for email in emails:
+            # Combine subject and body for analysis
+            full_text = f"{email['subject']} {email['body']}"
+            
+            analysis = self.analyzer.comprehensive_analysis(full_text)
+            
+            # Add email metadata
+            analysis['email_id'] = email['id']
+            analysis['subject'] = email['subject']
+            analysis['sender'] = email['sender']
+            analysis['body_preview'] = email['body'][:100] + "..."
+            
+            results.append(analysis)
+        
+        return results
+    
+    def generate_report(self, results):
+        """Generate comprehensive analysis report"""
+        report = {
+            'analysis_summary': {
+                'total_emails': len(results),
+                'high_risk': len([r for r in results if r['risk_level'] == 'HIGH RISK']),
+                'medium_risk': len([r for r in results if r['risk_level'] == 'MEDIUM RISK']),
+                'low_risk': len([r for r in results if r['risk_level'] == 'LOW RISK']),
+                'average_threat_score': sum(r['threat_score'] for r in results) / len(results)
+            },
+            'detailed_results': results,
+            'report_timestamp': datetime.now().isoformat()
+        }
+        
+        return report
+    
+    def save_results(self, report):
+        """Save analysis results to files"""
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Save JSON report
+        json_file = f"{self.results_dir}/phishing_analysis_{timestamp}.json"
+        with open(json_file, 'w') as f:
+            json.dump(report, f, indent=2)
+        
+        # Save CSV summary
+        csv_data = []
+        for result in report['detailed_results']:
+            csv_data.append({
+                'Email_ID': result['email_id'],
+                'Subject': result['subject'],
+                'Sender': result['sender'],
+                'Sentiment': result['sentiment_analysis']['sentiment'],
+                'Emotion': result['sentiment_analysis']['emotion'],
+                'Manipulation_Score': result['psychological_profile']['manipulation_score'],
+                'Threat_Score': result['threat_score'],
+                'Risk_Level': result['risk_level']
+            })
+        
+        df = pd.DataFrame(csv_data)
+        csv_file = f"{self.results_dir}/phishing_summary_{timestamp}.csv"
+        df.to_csv(csv_file, index=False)
+        
+        return json_file, csv_file
+    
+    def run_automated_analysis(self):
+        """Run complete automated phishing analysis"""
+        print("Starting Automated Phishing Detection Analysis...")
+        print("=" * 60)
+        
+        # Load email samples
+        emails = self.load_email_samples()
+        print(f"Loaded {len(emails)} email samples for analysis")
+        
+        # Analyze emails
+        print("Analyzing emails...")
+        results = self.analyze_email_batch(emails)
+        
+        # Generate report
+        report = self.generate_report(results)
+        
+        # Save results
+        json_file, csv_file = self.save_results(report)
+        
+        # Display summary
+        print("\nAnalysis Complete!")
+        print(f"Total Emails Analyzed: {report['analysis_summary']['total_emails']}")
+        print(f"High Risk: {report['analysis_summary']['high_risk']}")
+        print(f"Medium Risk: {report['analysis_summary']['medium_risk']}")
+        print(f"Low Risk: {report['analysis_summary']['low_risk']}")
+        print(f"Average Threat Score: {report['analysis_summary']['average_threat_score']:.1f}/100")
+        print(f"\nResults saved to:")
+        print(f"- JSON Report: {json_file}")
+        print(f"- CSV Summary: {csv_file}")
+        
+        return report
+
+if __name__ == "__main__":
+    detector = PhishingDetector()
+    report = detector.run_automated_analysis()
+    
+    # Display detailed results
+    print("\nDetailed Analysis Results:")
+    print("=" * 80)
+    
+    for result in report['detailed_results']:
+        print(f"\nEmail ID: {result['email_id']}")
+        print(f"Subject: {result['subject']}")
+        print(f"Sender: {result['sender']}")
+        print(f"Risk Level: {result['risk_level']}")
+        print(f"Threat Score: {result['threat_score']:.1f}/100")
+        print(f"Manipulation Score: {result['psychological_profile']['manipulation_score']:.1f}/100")
+        print(f"Sentiment: {result['sentiment_analysis']['sentiment']}")
+        print(f"Primary Emotion: {result['sentiment_analysis']['emotion']}")
+        print("-" * 60)
+Subtask 3.2: Create Monitoring Dashboard
+Create a simple monitoring script:
+
+# monitoring_dashboard.py
+import os
+import json
+import pandas as pd
+from datetime import datetime, timedelta
+import glob
+
+class MonitoringDashboard:
+    def __init__(self, results_dir="analysis_results"):
+        self.results_dir = results_dir
+    
+    def load_recent_analyses(self, days=7):
+        """Load analyses from the last N days"""
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        json_files = glob.glob(f"{self.results_dir}/phishing_analysis_*.json")
+        recent_analyses = []
+        
+        for file_path in json_files:
+            try:
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+                    report_time = datetime.fromisoformat(data['report_timestamp'])
+                    if report_time >= cutoff_date:
+                        recent_analyses.append(data)
+            except Exception as e:
+                print(f"Error loading {file_path}: {e}")
+        
+        return recent_analyses
+    
+    def generate_dashboard_summary(self):
+        """Generate dashboard summary"""
+        analyses = self.load_recent_analyses()
+        
+        if not analyses:
+            print("No recent analyses found.")
+            return
+        
+        total_emails = sum(a['analysis_summary']['total_emails'] for a in analyses)
+        total_high_risk = sum(a['analysis_summary']['high_risk'] for a in analyses)
+        total_medium_risk = sum(a['analysis_summary']['medium_risk'] for a in analyses)
+        total_low_risk = sum(a['analysis_summary']['low_risk'] for a in analyses)
+        
+        print("Phishing Detection Dashboard")
+        print("=" * 50)
+        print(f"Analysis Period: Last 7 days")
+        print(f"Total Analyses: {len(analyses)}")
+        print(f"Total Emails Processed: {total_emails}")
+        print(f"High Risk Emails: {total_high_risk} ({total_high_risk/total_emails*100:.1f}%)")
+        print(f"Medium Risk Emails: {total_medium_risk} ({total_medium_risk/total_emails*100:.1f}%)")
+        print(f"Low Risk Emails: {total_low_risk} ({total_low_risk/total_emails*100:.1f}%)")
+        
+        # Show recent high-risk emails
+        print("\nRecent High-Risk Emails:")
+        print("-" * 30)
+        
+        for analysis in analyses[-3:]:  # Show last 3 analyses
+            high_risk_emails = [r for r in analysis['detailed_results'] if r['risk_level'] == 'HIGH RISK']
+            for email in high_risk_emails[:2]:  # Show top 2 high-risk emails per analysis
+                print(f"Subject: {email['subject']}")
+                print(f"Threat Score: {email['threat_score']:.1f}/100")
+                print(f"Sender: {email['sender']}")
+                print()
+
+if __name__ == "__main__":
+    dashboard = MonitoringDashboard()
+    dashboard.generate_dashboard_summary()
+Subtask 3.3: Run Complete Automated System
+Create the main automation script:
+
+python3 phishing_detector.py
+python3 monitoring_dashboard.py
+Create a simple automation script:
+
+# run_automation.py
+#!/usr/bin/env python3
+import subprocess
+import time
+import schedule
+from datetime import datetime
+
+def run_phishing_analysis():
+    """Run the phishing detection analysis"""
+    print(f"[{datetime.now()}] Starting automated phishing analysis...")
+    try:
+        result = subprocess.run(['python3', 'phishing_detector.py'], 
+                              capture_output=True, text=True)
+        if result.returncode == 0:
+            print("Analysis completed successfully!")
+        else:
+            print(f"Analysis failed: {result.stderr}")
+    except Exception as e:
+        print(f"Error running analysis: {e}")
+
+def show_dashboard():
+    """Show monitoring dashboard"""
+    print(f"[{datetime.now()}] Updating dashboard...")
+    try:
+        subprocess.run(['python3', 'monitoring_dashboard.py'])
+    except Exception as e:
+        print(f"Error showing dashboard: {e}")
+
+if __name__ == "__main__":
+    print("Automated Phishing Detection System")
+    print("=" * 40)
+    
+    # Run initial analysis
+    run_phishing_analysis()
+    time.sleep(2)
+    show_dashboard()
+    
+    print("\nAutomation system ready!")
+    print("Analysis results are saved in the 'analysis_results' directory")
+Run the complete automation:
+
+python3 run_automation.py
+Verification and Testing
+Verify your setup by checking the generated files:
+
+ls -la analysis_results/
+cat analysis_results/phishing_summary_*.csv
+Test with custom text:
+
+python3 -c "
+from integrated_analyzer import IntegratedAnalyzer
+analyzer = IntegratedAnalyzer()
+result = analyzer.comprehensive_analysis('URGENT! Your bank account will be closed! Click here NOW!')
+print(f'Threat Score: {result[\"threat_score\"]:.1f}/100')
+print(f'Risk Level: {result[\"risk_level\"]}')
+"
+Conclusion
+You have successfully created an automated sentiment analysis and psychological profiling system using Hugging Face models. This lab demonstrated how to:
+
+Set up advanced AI models for sentiment analysis using Hugging Face transformers
+Implement psychological profiling techniques to detect manipulation tactics in text
+Create automated analysis pipelines for phishing campaign detection
+Build integrated systems that combine multiple AI models for comprehensive threat assessment
+This system can be applied to cybersecurity, email filtering, social media monitoring, and content moderation. The automated approach enables real-time analysis of large volumes of text data, making it valuable for organizations needing to detect and respond to potential threats quickly.
+
+The combination of sentiment analysis and psychological profiling provides deeper insights into potentially malicious content than traditional keyword-based approaches, making it a powerful tool for modern security applications.
