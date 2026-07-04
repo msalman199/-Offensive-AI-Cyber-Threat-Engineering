@@ -1,0 +1,600 @@
+16: Voice.ai + AI for Impersonation in Calls
+Learning Objectives
+By completing this lab, students will:
+
+Set up open-source voice cloning tools for voice synthesis
+Implement AI-based voice impersonation techniques
+Conduct controlled vishing simulation scenarios
+Understand the technical mechanisms behind voice-based social engineering attacks
+Learn defensive measures against voice impersonation threats
+Prerequisites
+Basic Linux command-line knowledge
+Understanding of audio file formats (WAV, MP3)
+Familiarity with Python programming
+Network security fundamentals
+Important: This lab is for educational purposes only. Use only in controlled environments with proper authorization.
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools - you'll install everything needed during the lab.
+
+Task 1: Set up Voice Cloning Environment
+Subtask 1.1: Install System Dependencies
+# Update system packages
+sudo apt update && sudo apt upgrade -y
+
+# Install Python and development tools
+sudo apt install -y python3 python3-pip python3-venv git build-essential
+
+# Install audio processing libraries
+sudo apt install -y ffmpeg portaudio19-dev python3-pyaudio
+
+# Install additional dependencies
+sudo apt install -y espeak espeak-data libespeak1 libespeak-dev
+Subtask 1.2: Set up Python Environment
+# Create virtual environment
+python3 -m venv voice_lab
+source voice_lab/bin/activate
+
+# Install required Python packages
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+pip install TTS pydub soundfile librosa numpy scipy matplotlib
+pip install pyaudio SpeechRecognition requests
+Subtask 1.3: Install Coqui TTS (Open Source Voice Cloning)
+# Install Coqui TTS
+pip install coqui-tts
+
+# Verify installation
+tts --help
+Task 2: Implement Voice Cloning and Impersonation
+Subtask 2.1: Prepare Sample Audio
+# Create working directory
+mkdir -p ~/voice_lab/samples
+cd ~/voice_lab/samples
+
+# Create a sample script for voice recording
+cat > record_sample.py << 'EOF'
+import pyaudio
+import wave
+import sys
+
+def record_audio(filename, duration=10):
+    CHUNK = 1024
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 22050
+    
+    p = pyaudio.PyAudio()
+    
+    stream = p.open(format=FORMAT,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    frames_per_buffer=CHUNK)
+    
+    print(f"Recording for {duration} seconds...")
+    frames = []
+    
+    for i in range(0, int(RATE / CHUNK * duration)):
+        data = stream.read(CHUNK)
+        frames.append(data)
+    
+    print("Recording finished.")
+    
+    stream.stop_stream()
+    stream.close()
+    p.terminate()
+    
+    wf = wave.open(filename, 'wb')
+    wf.setnchannels(CHANNELS)
+    wf.setsampwidth(p.get_sample_size(FORMAT))
+    wf.setframerate(RATE)
+    wf.writeframes(b''.join(frames))
+    wf.close()
+
+if __name__ == "__main__":
+    filename = sys.argv[1] if len(sys.argv) > 1 else "target_voice.wav"
+    record_audio(filename, 15)
+EOF
+
+# Record sample voice (speak clearly for 15 seconds)
+python record_sample.py target_voice.wav
+Subtask 2.2: Create Voice Cloning Script
+# Create voice cloning implementation
+cat > voice_clone.py << 'EOF'
+import torch
+from TTS.api import TTS
+import soundfile as sf
+import sys
+import os
+
+class VoiceCloner:
+    def __init__(self):
+        # Initialize TTS model for voice cloning
+        self.tts = TTS(model_name="tts_models/multilingual/multi-dataset/your_tts", 
+                      progress_bar=False, gpu=False)
+    
+    def clone_voice(self, text, reference_audio, output_file):
+        """Clone voice using reference audio"""
+        try:
+            # Generate speech with cloned voice
+            self.tts.tts_to_file(
+                text=text,
+                speaker_wav=reference_audio,
+                file_path=output_file,
+                language="en"
+            )
+            print(f"Voice cloned successfully: {output_file}")
+            return True
+        except Exception as e:
+            print(f"Error cloning voice: {e}")
+            return False
+    
+    def synthesize_text(self, text, output_file):
+        """Synthesize text with default voice"""
+        try:
+            self.tts.tts_to_file(text=text, file_path=output_file)
+            print(f"Text synthesized: {output_file}")
+            return True
+        except Exception as e:
+            print(f"Error synthesizing: {e}")
+            return False
+
+if __name__ == "__main__":
+    cloner = VoiceCloner()
+    
+    # Example usage
+    text = "Hello, this is a test of voice cloning technology."
+    reference = "target_voice.wav"
+    output = "cloned_output.wav"
+    
+    if os.path.exists(reference):
+        cloner.clone_voice(text, reference, output)
+    else:
+        print("Reference audio not found, using default voice")
+        cloner.synthesize_text(text, output)
+EOF
+Subtask 2.3: Test Voice Cloning
+# Test the voice cloning system
+python voice_clone.py
+
+# Play the generated audio (if speakers available)
+# aplay cloned_output.wav
+Task 3: Implement Call Impersonation System
+Subtask 3.1: Create Call Simulation Framework
+# Create call simulation script
+cat > call_simulator.py << 'EOF'
+import time
+import random
+import os
+from voice_clone import VoiceCloner
+
+class CallSimulator:
+    def __init__(self):
+        self.cloner = VoiceCloner()
+        self.call_scripts = {
+            "tech_support": [
+                "Hello, this is Microsoft technical support.",
+                "We've detected suspicious activity on your computer.",
+                "Please provide your login credentials to verify your identity."
+            ],
+            "bank_fraud": [
+                "This is your bank's fraud department.",
+                "We've detected unauthorized transactions on your account.",
+                "Please confirm your account number and PIN for verification."
+            ],
+            "family_emergency": [
+                "Hi, it's me. I'm in trouble and need help.",
+                "I've been in an accident and need money for bail.",
+                "Please don't tell anyone, just send the money quickly."
+            ]
+        }
+    
+    def generate_call_audio(self, scenario, reference_voice=None):
+        """Generate audio for vishing call scenario"""
+        if scenario not in self.call_scripts:
+            print(f"Unknown scenario: {scenario}")
+            return False
+        
+        script = self.call_scripts[scenario]
+        output_files = []
+        
+        for i, line in enumerate(script):
+            output_file = f"{scenario}_line_{i+1}.wav"
+            
+            if reference_voice and os.path.exists(reference_voice):
+                success = self.cloner.clone_voice(line, reference_voice, output_file)
+            else:
+                success = self.cloner.synthesize_text(line, output_file)
+            
+            if success:
+                output_files.append(output_file)
+                print(f"Generated: {output_file}")
+            
+            time.sleep(1)  # Brief pause between generations
+        
+        return output_files
+    
+    def simulate_call(self, scenario, reference_voice=None):
+        """Simulate a complete vishing call"""
+        print(f"\n=== SIMULATING {scenario.upper()} CALL ===")
+        print("WARNING: This is a simulation for educational purposes only!")
+        print("-" * 50)
+        
+        audio_files = self.generate_call_audio(scenario, reference_voice)
+        
+        if audio_files:
+            print(f"\nCall simulation complete. Generated {len(audio_files)} audio segments.")
+            print("Audio files:", audio_files)
+            
+            # Simulate call timing
+            print("\nSimulating call progression:")
+            for i, audio_file in enumerate(audio_files, 1):
+                print(f"Playing segment {i}: {audio_file}")
+                time.sleep(2)  # Simulate speaking time
+                print("Waiting for response...")
+                time.sleep(1)  # Simulate response time
+        
+        return audio_files
+
+if __name__ == "__main__":
+    simulator = CallSimulator()
+    
+    # List available scenarios
+    print("Available scenarios:")
+    for scenario in simulator.call_scripts.keys():
+        print(f"- {scenario}")
+    
+    # Run simulation
+    scenario = input("\nEnter scenario name: ").strip()
+    reference = "target_voice.wav" if os.path.exists("target_voice.wav") else None
+    
+    simulator.simulate_call(scenario, reference)
+EOF
+Subtask 3.2: Create Detection and Analysis Tools
+# Create voice analysis script
+cat > voice_analyzer.py << 'EOF'
+import librosa
+import numpy as np
+import matplotlib.pyplot as plt
+import soundfile as sf
+
+class VoiceAnalyzer:
+    def __init__(self):
+        pass
+    
+    def analyze_audio(self, audio_file):
+        """Analyze audio characteristics"""
+        try:
+            # Load audio
+            y, sr = librosa.load(audio_file)
+            
+            # Extract features
+            features = {
+                'duration': len(y) / sr,
+                'sample_rate': sr,
+                'rms_energy': np.mean(librosa.feature.rms(y=y)),
+                'spectral_centroid': np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)),
+                'zero_crossing_rate': np.mean(librosa.feature.zero_crossing_rate(y)),
+                'tempo': librosa.beat.tempo(y=y, sr=sr)[0]
+            }
+            
+            return features
+        except Exception as e:
+            print(f"Error analyzing {audio_file}: {e}")
+            return None
+    
+    def compare_voices(self, original, synthetic):
+        """Compare original and synthetic voice characteristics"""
+        orig_features = self.analyze_audio(original)
+        synth_features = self.analyze_audio(synthetic)
+        
+        if not orig_features or not synth_features:
+            return None
+        
+        print(f"\n=== VOICE COMPARISON ===")
+        print(f"{'Metric':<20} {'Original':<15} {'Synthetic':<15} {'Difference':<15}")
+        print("-" * 65)
+        
+        for key in orig_features:
+            if isinstance(orig_features[key], (int, float)):
+                diff = abs(orig_features[key] - synth_features[key])
+                print(f"{key:<20} {orig_features[key]:<15.3f} {synth_features[key]:<15.3f} {diff:<15.3f}")
+        
+        return orig_features, synth_features
+    
+    def detect_synthetic_indicators(self, audio_file):
+        """Detect potential indicators of synthetic speech"""
+        features = self.analyze_audio(audio_file)
+        if not features:
+            return []
+        
+        indicators = []
+        
+        # Check for common synthetic speech characteristics
+        if features['rms_energy'] < 0.01:
+            indicators.append("Unusually low energy levels")
+        
+        if features['spectral_centroid'] > 3000:
+            indicators.append("High spectral centroid (metallic sound)")
+        
+        if features['zero_crossing_rate'] > 0.15:
+            indicators.append("High zero crossing rate (artificial)")
+        
+        return indicators
+
+if __name__ == "__main__":
+    analyzer = VoiceAnalyzer()
+    
+    # Analyze available audio files
+    audio_files = [f for f in os.listdir('.') if f.endswith('.wav')]
+    
+    for audio_file in audio_files:
+        print(f"\nAnalyzing: {audio_file}")
+        features = analyzer.analyze_audio(audio_file)
+        if features:
+            for key, value in features.items():
+                print(f"{key}: {value}")
+        
+        indicators = analyzer.detect_synthetic_indicators(audio_file)
+        if indicators:
+            print("Synthetic speech indicators:")
+            for indicator in indicators:
+                print(f"- {indicator}")
+EOF
+Task 4: Conduct Vishing Call Simulation
+Subtask 4.1: Run Complete Simulation
+# Execute the call simulation
+cd ~/voice_lab/samples
+
+# Run the simulation
+python call_simulator.py
+Subtask 4.2: Analyze Generated Audio
+# Analyze the generated audio files
+python voice_analyzer.py
+
+# Compare original and cloned voices (if available)
+python -c "
+from voice_analyzer import VoiceAnalyzer
+analyzer = VoiceAnalyzer()
+if os.path.exists('target_voice.wav') and os.path.exists('cloned_output.wav'):
+    analyzer.compare_voices('target_voice.wav', 'cloned_output.wav')
+"
+Subtask 4.3: Create Detection Report
+# Generate comprehensive analysis report
+cat > generate_report.py << 'EOF'
+import os
+import json
+from voice_analyzer import VoiceAnalyzer
+from datetime import datetime
+
+def generate_detection_report():
+    analyzer = VoiceAnalyzer()
+    report = {
+        'timestamp': datetime.now().isoformat(),
+        'analysis_results': {},
+        'detection_summary': {}
+    }
+    
+    # Analyze all WAV files
+    audio_files = [f for f in os.listdir('.') if f.endswith('.wav')]
+    
+    for audio_file in audio_files:
+        features = analyzer.analyze_audio(audio_file)
+        indicators = analyzer.detect_synthetic_indicators(audio_file)
+        
+        report['analysis_results'][audio_file] = {
+            'features': features,
+            'synthetic_indicators': indicators,
+            'risk_level': 'HIGH' if len(indicators) > 2 else 'MEDIUM' if indicators else 'LOW'
+        }
+    
+    # Generate summary
+    total_files = len(audio_files)
+    high_risk = sum(1 for r in report['analysis_results'].values() if r['risk_level'] == 'HIGH')
+    
+    report['detection_summary'] = {
+        'total_files_analyzed': total_files,
+        'high_risk_files': high_risk,
+        'detection_rate': f"{(high_risk/total_files)*100:.1f}%" if total_files > 0 else "0%"
+    }
+    
+    # Save report
+    with open('detection_report.json', 'w') as f:
+        json.dump(report, f, indent=2)
+    
+    print("=== VOICE IMPERSONATION DETECTION REPORT ===")
+    print(f"Analysis completed at: {report['timestamp']}")
+    print(f"Files analyzed: {total_files}")
+    print(f"High-risk detections: {high_risk}")
+    print(f"Detection rate: {report['detection_summary']['detection_rate']}")
+    print("\nDetailed results saved to: detection_report.json")
+
+if __name__ == "__main__":
+    generate_detection_report()
+EOF
+
+# Generate the report
+python generate_report.py
+Task 5: Defensive Measures and Countermeasures
+Subtask 5.1: Implement Voice Authentication
+# Create voice authentication system
+cat > voice_auth.py << 'EOF'
+import librosa
+import numpy as np
+from scipy.spatial.distance import cosine
+
+class VoiceAuthenticator:
+    def __init__(self):
+        self.enrolled_voices = {}
+    
+    def extract_voice_features(self, audio_file):
+        """Extract voice biometric features"""
+        try:
+            y, sr = librosa.load(audio_file)
+            
+            # Extract MFCC features (voice fingerprint)
+            mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
+            mfcc_mean = np.mean(mfccs, axis=1)
+            
+            # Extract additional features
+            spectral_centroid = np.mean(librosa.feature.spectral_centroid(y=y, sr=sr))
+            spectral_rolloff = np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr))
+            
+            features = np.concatenate([mfcc_mean, [spectral_centroid, spectral_rolloff]])
+            return features
+        except Exception as e:
+            print(f"Error extracting features: {e}")
+            return None
+    
+    def enroll_voice(self, user_id, audio_file):
+        """Enroll a user's voice for authentication"""
+        features = self.extract_voice_features(audio_file)
+        if features is not None:
+            self.enrolled_voices[user_id] = features
+            print(f"Voice enrolled for user: {user_id}")
+            return True
+        return False
+    
+    def authenticate_voice(self, audio_file, threshold=0.3):
+        """Authenticate voice against enrolled voices"""
+        features = self.extract_voice_features(audio_file)
+        if features is None:
+            return None, 0.0
+        
+        best_match = None
+        best_score = float('inf')
+        
+        for user_id, enrolled_features in self.enrolled_voices.items():
+            # Calculate cosine distance
+            distance = cosine(features, enrolled_features)
+            if distance < best_score:
+                best_score = distance
+                best_match = user_id
+        
+        # Convert distance to similarity score
+        similarity = 1 - best_score
+        authenticated = similarity > (1 - threshold)
+        
+        return best_match if authenticated else None, similarity
+
+if __name__ == "__main__":
+    auth = VoiceAuthenticator()
+    
+    # Example usage
+    if os.path.exists('target_voice.wav'):
+        auth.enroll_voice('legitimate_user', 'target_voice.wav')
+        
+        # Test authentication
+        test_files = [f for f in os.listdir('.') if f.endswith('.wav') and f != 'target_voice.wav']
+        
+        for test_file in test_files[:3]:  # Test first 3 files
+            user, score = auth.authenticate_voice(test_file)
+            print(f"File: {test_file}")
+            print(f"Authenticated as: {user if user else 'REJECTED'}")
+            print(f"Confidence: {score:.3f}")
+            print("-" * 30)
+EOF
+
+# Test voice authentication
+python voice_auth.py
+Verification and Testing
+Test Voice Cloning Quality
+# Verify all components are working
+echo "Testing voice cloning system..."
+
+# Check if audio files were generated
+ls -la *.wav
+
+# Verify Python modules
+python -c "
+import torch
+from TTS.api import TTS
+print('TTS system ready')
+"
+
+# Test audio analysis
+python -c "
+import librosa
+import numpy as np
+print('Audio analysis tools ready')
+"
+Security Assessment
+# Create security assessment script
+cat > security_assessment.py << 'EOF'
+import os
+import json
+
+def assess_security_implications():
+    print("=== SECURITY ASSESSMENT ===")
+    print("\nVOICE IMPERSONATION THREATS:")
+    print("1. Social Engineering Attacks")
+    print("2. Identity Theft")
+    print("3. Financial Fraud")
+    print("4. Unauthorized Access")
+    
+    print("\nDETECTION METHODS:")
+    print("1. Voice biometric analysis")
+    print("2. Behavioral pattern recognition")
+    print("3. Multi-factor authentication")
+    print("4. Call verification protocols")
+    
+    print("\nCOUNTERMEASURES:")
+    print("1. Voice authentication systems")
+    print("2. Challenge-response protocols")
+    print("3. Out-of-band verification")
+    print("4. AI-powered detection tools")
+    
+    # Check generated files for security analysis
+    audio_files = [f for f in os.listdir('.') if f.endswith('.wav')]
+    print(f"\nGenerated {len(audio_files)} audio samples for analysis")
+    
+    if os.path.exists('detection_report.json'):
+        with open('detection_report.json', 'r') as f:
+            report = json.load(f)
+        print(f"Detection system identified {report['detection_summary']['high_risk_files']} high-risk samples")
+
+if __name__ == "__main__":
+    assess_security_implications()
+EOF
+
+python security_assessment.py
+Cleanup and Documentation
+# Create lab summary
+cat > lab_summary.md << 'EOF'
+# Lab 16 Summary: Voice Impersonation Analysis
+
+## Completed Tasks:
+1. ✅ Set up voice cloning environment with Coqui TTS
+2. ✅ Implemented AI-based voice impersonation system
+3. ✅ Conducted vishing call simulations
+4. ✅ Developed voice analysis and detection tools
+5. ✅ Created authentication countermeasures
+
+## Generated Files:
+- Voice samples and cloned audio
+- Detection analysis reports
+- Security assessment documentation
+
+## Key Findings:
+- Voice cloning technology accessibility
+- Detection method effectiveness
+- Security implications and countermeasures
+
+## Ethical Considerations:
+- Educational use only
+- Proper authorization required
+- Awareness of legal implications
+EOF
+
+# Display summary
+cat lab_summary.md
+Conclusion
+This lab demonstrated the technical implementation of voice cloning and impersonation systems using open-source tools. Students learned to:
+
+Set up voice synthesis environments using Coqui TTS and related tools
+Implement voice cloning techniques for creating synthetic speech
+Simulate vishing attacks to understand social engineering methods
+Develop detection systems to identify synthetic voice characteristics
+Create authentication mechanisms to defend against voice impersonation
+The lab highlighted both the offensive capabilities of voice cloning technology and the defensive measures necessary to protect against such attacks. Understanding these techniques is crucial for cybersecurity professionals to develop effective countermeasures and educate users about emerging threats.
+
+Important: This knowledge should only be applied in authorized, controlled environments for legitimate security research and education purposes.
