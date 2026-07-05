@@ -1,0 +1,567 @@
+Perform AI-Driven Patch Diffing with DeepBinDiff + LLM Explanation
+Learning Objectives
+By completing this lab, you will:
+
+Set up and configure DeepBinDiff for automated patch analysis
+Integrate local LLM models for vulnerability explanation and analysis
+Perform binary diffing to identify security-relevant changes
+Generate AI-powered explanations of patch differences and potential vulnerabilities
+Prerequisites
+Basic understanding of binary analysis concepts
+Familiarity with Linux command line operations
+Knowledge of software patching and vulnerability concepts
+Understanding of Python programming fundamentals
+Lab Environment
+Al Nafi provides a Linux-based cloud machine for this lab. Simply click Start Lab to access your dedicated environment. The machine comes as bare metal with no pre-installed tools, so you will install all required components during the lab exercises.
+
+Task 1: Set up DeepBinDiff for Patch Diffing
+Subtask 1.1: Install System Dependencies
+Update the system and install required packages:
+
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y python3 python3-pip git build-essential cmake
+sudo apt install -y libssl-dev libffi-dev python3-dev
+sudo apt install -y radare2 binutils objdump
+Subtask 1.2: Install DeepBinDiff
+Clone and set up the DeepBinDiff repository:
+
+cd /home/ubuntu
+git clone https://github.com/deepbindiff/DeepBinDiff.git
+cd DeepBinDiff
+pip3 install -r requirements.txt
+pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+Subtask 1.3: Configure DeepBinDiff Environment
+Set up the configuration and test the installation:
+
+export PYTHONPATH=$PYTHONPATH:/home/ubuntu/DeepBinDiff
+python3 -c "import deepbindiff; print('DeepBinDiff installed successfully')"
+Create a configuration file:
+
+cat > config.json << 'EOF'
+{
+    "model_path": "./models/",
+    "output_path": "./results/",
+    "similarity_threshold": 0.8,
+    "analysis_depth": "deep"
+}
+EOF
+Task 2: Integrate LLM Models for Vulnerability Explanation
+Subtask 2.1: Install Local LLM Framework
+Install Ollama for local LLM deployment:
+
+curl -fsSL https://ollama.ai/install.sh | sh
+Start Ollama service:
+
+ollama serve &
+sleep 10
+Subtask 2.2: Download and Configure LLM Model
+Pull a suitable model for code analysis:
+
+ollama pull codellama:7b
+ollama pull llama2:7b
+Subtask 2.3: Create LLM Integration Script
+Create a Python script to integrate LLM explanations:
+
+cat > llm_analyzer.py << 'EOF'
+#!/usr/bin/env python3
+import requests
+import json
+import sys
+
+class LLMAnalyzer:
+    def __init__(self, model="codellama:7b"):
+        self.model = model
+        self.base_url = "http://localhost:11434/api/generate"
+    
+    def analyze_patch_diff(self, diff_content, context=""):
+        prompt = f"""
+        Analyze the following binary patch difference and explain:
+        1. What changes were made
+        2. Potential security implications
+        3. Vulnerability assessment
+        4. Risk level (Low/Medium/High)
+        
+        Context: {context}
+        
+        Patch Diff:
+        {diff_content}
+        
+        Provide a concise technical analysis:
+        """
+        
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False
+        }
+        
+        try:
+            response = requests.post(self.base_url, json=payload)
+            if response.status_code == 200:
+                return json.loads(response.text)["response"]
+            else:
+                return f"Error: {response.status_code}"
+        except Exception as e:
+            return f"LLM Analysis Error: {str(e)}"
+    
+    def explain_vulnerability(self, vuln_data):
+        prompt = f"""
+        Explain this vulnerability finding in simple terms:
+        
+        {vuln_data}
+        
+        Include:
+        - What the vulnerability is
+        - How it could be exploited
+        - Recommended mitigation
+        """
+        
+        payload = {
+            "model": self.model,
+            "prompt": prompt,
+            "stream": False
+        }
+        
+        try:
+            response = requests.post(self.base_url, json=payload)
+            if response.status_code == 200:
+                return json.loads(response.text)["response"]
+            else:
+                return f"Error: {response.status_code}"
+        except Exception as e:
+            return f"Explanation Error: {str(e)}"
+
+if __name__ == "__main__":
+    analyzer = LLMAnalyzer()
+    if len(sys.argv) > 1:
+        with open(sys.argv[1], 'r') as f:
+            content = f.read()
+        result = analyzer.analyze_patch_diff(content)
+        print(result)
+EOF
+
+chmod +x llm_analyzer.py
+Task 3: Analyze Patch Differences and Identify Vulnerabilities
+Subtask 3.1: Create Sample Binaries for Analysis
+Create test programs to demonstrate patch diffing:
+
+mkdir -p /home/ubuntu/samples
+cd /home/ubuntu/samples
+
+# Create vulnerable version
+cat > vulnerable.c << 'EOF'
+#include <stdio.h>
+#include <string.h>
+
+void process_input(char *input) {
+    char buffer[64];
+    strcpy(buffer, input);  // Vulnerable: no bounds checking
+    printf("Processed: %s\n", buffer);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        process_input(argv[1]);
+    }
+    return 0;
+}
+EOF
+
+# Create patched version
+cat > patched.c << 'EOF'
+#include <stdio.h>
+#include <string.h>
+
+void process_input(char *input) {
+    char buffer[64];
+    strncpy(buffer, input, sizeof(buffer)-1);  // Fixed: bounds checking
+    buffer[sizeof(buffer)-1] = '\0';
+    printf("Processed: %s\n", buffer);
+}
+
+int main(int argc, char *argv[]) {
+    if (argc > 1) {
+        process_input(argv[1]);
+    }
+    return 0;
+}
+EOF
+
+# Compile both versions
+gcc -o vulnerable vulnerable.c -fno-stack-protector
+gcc -o patched patched.c -fno-stack-protector
+Subtask 3.2: Perform Binary Diffing Analysis
+Create a comprehensive analysis script:
+
+cat > patch_analyzer.py << 'EOF'
+#!/usr/bin/env python3
+import subprocess
+import os
+import sys
+from llm_analyzer import LLMAnalyzer
+
+class PatchAnalyzer:
+    def __init__(self):
+        self.llm = LLMAnalyzer()
+    
+    def extract_binary_info(self, binary_path):
+        """Extract binary information using objdump"""
+        try:
+            result = subprocess.run(['objdump', '-d', binary_path], 
+                                  capture_output=True, text=True)
+            return result.stdout
+        except Exception as e:
+            return f"Error extracting binary info: {str(e)}"
+    
+    def compare_binaries(self, old_binary, new_binary):
+        """Compare two binaries and identify differences"""
+        old_info = self.extract_binary_info(old_binary)
+        new_info = self.extract_binary_info(new_binary)
+        
+        # Simple diff approach
+        old_lines = old_info.split('\n')
+        new_lines = new_info.split('\n')
+        
+        differences = []
+        max_lines = max(len(old_lines), len(new_lines))
+        
+        for i in range(max_lines):
+            old_line = old_lines[i] if i < len(old_lines) else ""
+            new_line = new_lines[i] if i < len(new_lines) else ""
+            
+            if old_line != new_line:
+                differences.append({
+                    'line_num': i,
+                    'old': old_line,
+                    'new': new_line
+                })
+        
+        return differences
+    
+    def analyze_security_implications(self, differences):
+        """Analyze differences for security implications"""
+        security_findings = []
+        
+        for diff in differences:
+            old_line = diff['old'].lower()
+            new_line = diff['new'].lower()
+            
+            # Look for security-relevant changes
+            if 'strcpy' in old_line and 'strncpy' in new_line:
+                security_findings.append({
+                    'type': 'Buffer Overflow Fix',
+                    'description': 'strcpy replaced with strncpy',
+                    'risk_level': 'High',
+                    'line': diff['line_num']
+                })
+            
+            if 'malloc' in old_line or 'free' in new_line:
+                security_findings.append({
+                    'type': 'Memory Management',
+                    'description': 'Memory allocation/deallocation change',
+                    'risk_level': 'Medium',
+                    'line': diff['line_num']
+                })
+        
+        return security_findings
+    
+    def generate_report(self, old_binary, new_binary, output_file):
+        """Generate comprehensive analysis report"""
+        print(f"Analyzing patch differences between {old_binary} and {new_binary}")
+        
+        # Compare binaries
+        differences = self.compare_binaries(old_binary, new_binary)
+        security_findings = self.analyze_security_implications(differences)
+        
+        # Prepare diff content for LLM analysis
+        diff_summary = f"Found {len(differences)} differences between binaries\n"
+        diff_summary += f"Security findings: {len(security_findings)}\n\n"
+        
+        for finding in security_findings:
+            diff_summary += f"- {finding['type']}: {finding['description']} (Risk: {finding['risk_level']})\n"
+        
+        # Get LLM analysis
+        llm_analysis = self.llm.analyze_patch_diff(diff_summary, 
+                                                  f"Comparing {old_binary} vs {new_binary}")
+        
+        # Generate report
+        report = f"""
+# Patch Analysis Report
+
+## Binary Comparison
+- Original: {old_binary}
+- Patched: {new_binary}
+- Differences Found: {len(differences)}
+
+## Security Findings
+"""
+        
+        for finding in security_findings:
+            report += f"""
+### {finding['type']}
+- **Description**: {finding['description']}
+- **Risk Level**: {finding['risk_level']}
+- **Line**: {finding['line']}
+"""
+        
+        report += f"""
+
+## AI Analysis
+{llm_analysis}
+
+## Detailed Differences
+"""
+        
+        for i, diff in enumerate(differences[:10]):  # Limit to first 10 differences
+            report += f"""
+### Difference {i+1} (Line {diff['line_num']})
+**Before**: {diff['old'][:100]}...
+**After**: {diff['new'][:100]}...
+"""
+        
+        # Save report
+        with open(output_file, 'w') as f:
+            f.write(report)
+        
+        print(f"Report saved to {output_file}")
+        return report
+
+if __name__ == "__main__":
+    analyzer = PatchAnalyzer()
+    
+    if len(sys.argv) != 4:
+        print("Usage: python3 patch_analyzer.py <old_binary> <new_binary> <output_report>")
+        sys.exit(1)
+    
+    old_binary = sys.argv[1]
+    new_binary = sys.argv[2]
+    output_file = sys.argv[3]
+    
+    analyzer.generate_report(old_binary, new_binary, output_file)
+EOF
+
+chmod +x patch_analyzer.py
+Subtask 3.3: Execute Patch Analysis
+Run the comprehensive patch analysis:
+
+cd /home/ubuntu/samples
+python3 ../patch_analyzer.py vulnerable patched analysis_report.md
+Subtask 3.4: Advanced Analysis with DeepBinDiff
+Create an integration script for DeepBinDiff:
+
+cat > deep_analysis.py << 'EOF'
+#!/usr/bin/env python3
+import os
+import sys
+import subprocess
+from llm_analyzer import LLMAnalyzer
+
+class DeepPatchAnalyzer:
+    def __init__(self):
+        self.llm = LLMAnalyzer()
+        self.deepbindiff_path = "/home/ubuntu/DeepBinDiff"
+    
+    def run_deepbindiff(self, binary1, binary2):
+        """Run DeepBinDiff analysis"""
+        try:
+            cmd = [
+                'python3', 
+                f'{self.deepbindiff_path}/main.py',
+                '--binary1', binary1,
+                '--binary2', binary2,
+                '--output', 'deep_analysis_result.json'
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, 
+                                  cwd=self.deepbindiff_path)
+            return result.stdout, result.stderr
+        except Exception as e:
+            return "", f"DeepBinDiff error: {str(e)}"
+    
+    def analyze_with_ai(self, binary1, binary2):
+        """Perform AI-driven analysis"""
+        print("Starting AI-driven patch analysis...")
+        
+        # Run basic analysis
+        stdout, stderr = self.run_deepbindiff(binary1, binary2)
+        
+        if stderr and "error" in stderr.lower():
+            print(f"DeepBinDiff encountered issues: {stderr}")
+            # Fallback to manual analysis
+            return self.manual_analysis(binary1, binary2)
+        
+        # Analyze results with LLM
+        analysis_context = f"""
+        DeepBinDiff Analysis Results:
+        STDOUT: {stdout}
+        STDERR: {stderr}
+        
+        Binaries analyzed:
+        - Original: {binary1}
+        - Patched: {binary2}
+        """
+        
+        ai_explanation = self.llm.analyze_patch_diff(analysis_context)
+        
+        return {
+            'deepbindiff_output': stdout,
+            'deepbindiff_errors': stderr,
+            'ai_analysis': ai_explanation
+        }
+    
+    def manual_analysis(self, binary1, binary2):
+        """Manual analysis when DeepBinDiff fails"""
+        print("Performing manual analysis...")
+        
+        # Use radare2 for analysis
+        try:
+            r2_cmd1 = f'r2 -qc "aa; pdf" {binary1}'
+            r2_cmd2 = f'r2 -qc "aa; pdf" {binary2}'
+            
+            result1 = subprocess.run(r2_cmd1, shell=True, capture_output=True, text=True)
+            result2 = subprocess.run(r2_cmd2, shell=True, capture_output=True, text=True)
+            
+            analysis_data = f"""
+            Manual Binary Analysis:
+            
+            Binary 1 Analysis:
+            {result1.stdout[:1000]}
+            
+            Binary 2 Analysis:
+            {result2.stdout[:1000]}
+            """
+            
+            ai_explanation = self.llm.analyze_patch_diff(analysis_data)
+            
+            return {
+                'manual_analysis': True,
+                'binary1_analysis': result1.stdout,
+                'binary2_analysis': result2.stdout,
+                'ai_analysis': ai_explanation
+            }
+            
+        except Exception as e:
+            return {'error': f'Manual analysis failed: {str(e)}'}
+
+if __name__ == "__main__":
+    if len(sys.argv) != 3:
+        print("Usage: python3 deep_analysis.py <binary1> <binary2>")
+        sys.exit(1)
+    
+    analyzer = DeepPatchAnalyzer()
+    result = analyzer.analyze_with_ai(sys.argv[1], sys.argv[2])
+    
+    print("\n" + "="*50)
+    print("AI-DRIVEN PATCH ANALYSIS RESULTS")
+    print("="*50)
+    
+    if 'ai_analysis' in result:
+        print("\nAI Analysis:")
+        print(result['ai_analysis'])
+    
+    if 'deepbindiff_output' in result:
+        print(f"\nDeepBinDiff Output:")
+        print(result['deepbindiff_output'])
+    
+    if 'error' in result:
+        print(f"\nError: {result['error']}")
+EOF
+
+chmod +x deep_analysis.py
+Subtask 3.5: Run Complete Analysis
+Execute the comprehensive AI-driven analysis:
+
+cd /home/ubuntu/samples
+python3 ../deep_analysis.py vulnerable patched
+Subtask 3.6: Generate Final Report
+Create a summary report of all findings:
+
+cat > generate_final_report.py << 'EOF'
+#!/usr/bin/env python3
+import json
+import os
+from datetime import datetime
+from llm_analyzer import LLMAnalyzer
+
+def generate_executive_summary():
+    llm = LLMAnalyzer()
+    
+    # Read previous analysis results
+    analysis_files = ['analysis_report.md']
+    combined_analysis = ""
+    
+    for file in analysis_files:
+        if os.path.exists(file):
+            with open(file, 'r') as f:
+                combined_analysis += f.read() + "\n\n"
+    
+    # Generate executive summary
+    summary_prompt = f"""
+    Based on the following patch analysis results, create an executive summary that includes:
+    1. Key vulnerabilities found
+    2. Security improvements made
+    3. Risk assessment
+    4. Recommendations
+    
+    Analysis Data:
+    {combined_analysis}
+    """
+    
+    executive_summary = llm.analyze_patch_diff(summary_prompt, "Executive Summary Generation")
+    
+    # Create final report
+    final_report = f"""
+# AI-Driven Patch Analysis - Final Report
+**Generated**: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+## Executive Summary
+{executive_summary}
+
+## Technical Analysis Details
+{combined_analysis}
+
+## Methodology
+This analysis was performed using:
+- DeepBinDiff for binary comparison
+- Local LLM (CodeLlama) for vulnerability explanation
+- Custom Python scripts for integration
+- Radare2 for binary analysis
+
+## Tools Used
+- **DeepBinDiff**: AI-powered binary diffing
+- **Ollama + CodeLlama**: Local LLM for explanations
+- **Radare2**: Binary analysis framework
+- **Custom Scripts**: Integration and automation
+"""
+    
+    with open('final_patch_analysis_report.md', 'w') as f:
+        f.write(final_report)
+    
+    print("Final report generated: final_patch_analysis_report.md")
+    print("\nExecutive Summary:")
+    print(executive_summary)
+
+if __name__ == "__main__":
+    generate_executive_summary()
+EOF
+
+python3 generate_final_report.py
+Subtask 3.7: Verify Results
+Review the generated reports and verify the analysis:
+
+echo "=== Analysis Results ==="
+ls -la *.md *.json 2>/dev/null || echo "No report files found"
+
+echo -e "\n=== Final Report Preview ==="
+head -30 final_patch_analysis_report.md 2>/dev/null || echo "Final report not generated"
+
+echo -e "\n=== LLM Service Status ==="
+curl -s http://localhost:11434/api/tags | python3 -m json.tool 2>/dev/null || echo "LLM service not responding"
+Conclusion
+You have successfully completed an AI-driven patch diffing analysis using DeepBinDiff and local LLM integration. This lab demonstrated how to:
+
+Set up DeepBinDiff for automated binary comparison and patch analysis
+Integrate local LLM models using Ollama to provide intelligent explanations of security findings
+Perform comprehensive patch analysis combining traditional binary diffing with AI-powered insights
+Generate detailed reports that explain vulnerabilities and security implications in human-readable format
+This approach combines the precision of binary analysis tools with the explanatory power of large language models, creating a powerful workflow for security researchers and developers to understand the impact of code changes and identify potential vulnerabilities. The integration of AI makes complex binary analysis results accessible to a broader audience while maintaining technical accuracy.
