@@ -1,0 +1,6 @@
+{
+    "model_path": "./models/",
+    "output_path": "./results/",
+    "similarity_threshold": 0.8,
+    "analysis_depth": "deep"
+}
